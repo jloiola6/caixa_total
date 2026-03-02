@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { CurrencyInput } from "@/components/currency-input"
 import { upsertProduct } from "@/lib/db"
+import { syncToServer } from "@/lib/sync"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
 import { ImagePlus, X } from "lucide-react"
@@ -143,6 +144,7 @@ export function ProductFormDialog({
     toast.success(isEditing ? "Produto atualizado" : "Produto cadastrado")
     onOpenChange(false)
     onSaved()
+    syncToServer().catch(() => {})
   }
 
   const showBrand = category === "roupas" || category === "tenis" || category === "controles"

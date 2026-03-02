@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback, Fragment } from "react"
+import { useSearchParams } from "next/navigation"
 import { format, subDays, startOfDay, endOfDay } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import {
@@ -48,11 +49,23 @@ import {
   getTopProducts,
   seedDemoData,
 } from "@/lib/db"
+import {
+  getReportSummary,
+  getReportSales,
+  getReportTopProducts,
+} from "@/lib/api"
 import { formatCurrency, formatDate, formatDateLabel } from "@/lib/format"
 import { PAYMENT_METHOD_LABELS } from "@/lib/types"
 import type { Sale, SaleItem, PaymentMethod } from "@/lib/types"
 
+const READ_ONLY_VIEW = "report"
+
 export default function RelatoriosPage() {
+  const searchParams = useSearchParams()
+  const readOnly =
+    searchParams.get("view") === READ_ONLY_VIEW ||
+    process.env.NEXT_PUBLIC_READ_ONLY === "true"
+
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -62,9 +75,16 @@ export default function RelatoriosPage() {
   const [expandedItems, setExpandedItems] = useState<SaleItem[]>([])
   const [calendarOpen, setCalendarOpen] = useState(false)
 
+  const [apiSummary, setApiSummary] = useState<{ date: string; totalCents: number; salesCount: number; itemsCount: number }[]>([])
+  const [apiSales, setApiSales] = useState<Sale[]>([])
+  const [apiSalesFull, setApiSalesFull] = useState<{ id: string; items: SaleItem[] }[]>([])
+  const [apiTopProducts, setApiTopProducts] = useState<{ productId: string; productName: string; totalQty: number; totalCents: number }[]>([])
+  const [apiLoading, setApiLoading] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
+
   useEffect(() => {
-    seedDemoData()
-  }, [])
+    if (!readOnly) seedDemoData()
+  }, [readOnly])
 
   const startISO = useMemo(
     () => startOfDay(dateRange.from).toISOString(),
@@ -80,32 +100,63 @@ export default function RelatoriosPage() {
   }, [startISO, endISO])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!readOnly) loadData()
+  }, [readOnly, loadData])
 
-  const dailySummary = useMemo(
+  useEffect(() => {
+    if (!readOnly) return
+    setApiLoading(true)
+    setApiError(null)
+    Promise.all([
+      getReportSummary(startISO, endISO),
+      getReportSales(startISO, endISO),
+      getReportTopProducts(startISO, endISO, 5),
+    ])
+      .then(([summary, salesRes, top]) => {
+        setApiSummary(summary)
+        setApiSales(
+          salesRes.map((s) => ({
+            id: s.id,
+            createdAt: s.createdAt,
+            totalCents: s.totalCents,
+            itemsCount: s.itemsCount,
+            customerName: s.customerName,
+            customerPhone: s.customerPhone,
+            payments: s.payments,
+          }))
+        )
+        setApiSalesFull(salesRes.map((s) => ({ id: s.id, items: s.items })))
+        setApiTopProducts(top)
+      })
+      .catch((e) => setApiError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setApiLoading(false))
+  }, [readOnly, startISO, endISO])
+
+  const dailySummaryLocal = useMemo(
     () => getDailySummary(startISO, endISO),
     [startISO, endISO]
   )
-
-  const topProducts = useMemo(
+  const topProductsLocal = useMemo(
     () => getTopProducts(startISO, endISO, 5),
     [startISO, endISO]
   )
+  const dailySummary = readOnly ? apiSummary : dailySummaryLocal
+  const topProducts = readOnly ? apiTopProducts : topProductsLocal
+  const salesData = readOnly ? apiSales : sales
 
   const totalRevenue = useMemo(
-    () => sales.reduce((sum, s) => sum + s.totalCents, 0),
-    [sales]
+    () => salesData.reduce((sum, s) => sum + s.totalCents, 0),
+    [salesData]
   )
 
   const totalItems = useMemo(
-    () => sales.reduce((sum, s) => sum + s.itemsCount, 0),
-    [sales]
+    () => salesData.reduce((sum, s) => sum + s.itemsCount, 0),
+    [salesData]
   )
 
   const avgTicket = useMemo(
-    () => (sales.length > 0 ? Math.round(totalRevenue / sales.length) : 0),
-    [totalRevenue, sales.length]
+    () => (salesData.length > 0 ? Math.round(totalRevenue / salesData.length) : 0),
+    [totalRevenue, salesData.length]
   )
 
   const chartData = useMemo(
@@ -123,7 +174,12 @@ export default function RelatoriosPage() {
       setExpandedItems([])
     } else {
       setExpandedSale(saleId)
-      setExpandedItems(getSaleItems(saleId))
+      if (readOnly) {
+        const full = apiSalesFull.find((s) => s.id === saleId)
+        setExpandedItems(full?.items ?? [])
+      } else {
+        setExpandedItems(getSaleItems(saleId))
+      }
     }
   }
 
@@ -150,8 +206,15 @@ export default function RelatoriosPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             Visao geral das vendas e desempenho
+            {readOnly && " (somente leitura)"}
           </p>
         </div>
+        {readOnly && apiError && (
+          <p className="text-sm text-destructive">{apiError}</p>
+        )}
+        {readOnly && apiLoading && (
+          <p className="text-sm text-muted-foreground">Carregando...</p>
+        )}
         <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
           <PopoverTrigger asChild>
             <Button variant="outline" className="gap-2 w-fit">
@@ -198,7 +261,7 @@ export default function RelatoriosPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              {sales.length}
+              {salesData.length}
             </div>
           </CardContent>
         </Card>
@@ -326,7 +389,7 @@ export default function RelatoriosPage() {
           <CardTitle className="text-base">Vendas Recentes</CardTitle>
         </CardHeader>
         <CardContent>
-          {sales.length === 0 ? (
+          {salesData.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               Nenhuma venda no periodo selecionado
             </p>
@@ -344,7 +407,7 @@ export default function RelatoriosPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sales.map((sale) => (
+                  {salesData.map((sale) => (
                     <Fragment key={sale.id}>
                       <TableRow
                         className="cursor-pointer hover:bg-accent/50"

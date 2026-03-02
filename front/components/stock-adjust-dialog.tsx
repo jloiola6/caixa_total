@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { adjustStock } from "@/lib/db"
+import { syncToServer } from "@/lib/sync"
 import type { Product } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -56,6 +57,7 @@ export function StockAdjustDialog({
     setReason("")
     onOpenChange(false)
     onAdjusted()
+    syncToServer().catch(() => {})
   }
 
   function handleClose() {

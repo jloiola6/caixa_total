@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge"
 import { ProductFormDialog } from "@/components/product-form-dialog"
 import { StockAdjustDialog } from "@/components/stock-adjust-dialog"
 import { getProducts, deleteProduct, seedDemoData } from "@/lib/db"
+import { syncToServer } from "@/lib/sync"
 import { formatCurrency } from "@/lib/format"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
@@ -114,6 +115,7 @@ export default function ProdutosPage() {
     toast.success("Produto excluido")
     setDeleteTarget(null)
     loadProducts()
+    syncToServer().catch(() => {})
   }
 
   function stockBadge(stock: number) {

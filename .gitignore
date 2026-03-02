@@ -9,3 +9,7 @@ node_modules/
 .env*.local
 .DS_Store
 .pnpm-store/
+out/
+front/out/
+back/dist/
+.env

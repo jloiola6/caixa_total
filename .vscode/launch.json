@@ -2,13 +2,23 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Docker: Compose Up",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
       "name": "Next.js: Web",
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["run", "dev"],
       "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/front",
+      "preLaunchTask": "front: install",
       "env": { "NODE_OPTIONS": "--inspect" },
       "serverReadyAction": {
         "pattern": "- Local:.+(https?://.+)",
@@ -21,8 +31,8 @@
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["${workspaceFolder}/node_modules/electron/cli.js", "."],
-      "cwd": "${workspaceFolder}",
+      "runtimeArgs": ["${workspaceFolder}/front/node_modules/electron/cli.js", "."],
+      "cwd": "${workspaceFolder}/front",
       "console": "integratedTerminal",
       "preLaunchTask": "next: build"
     },
@@ -32,7 +42,7 @@
       "request": "launch",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["cap", "run", "android"],
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/front",
       "console": "integratedTerminal",
       "preLaunchTask": "build + cap sync"
     },
@@ -42,7 +52,7 @@
       "request": "launch",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["cap", "run", "android"],
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/front",
       "console": "integratedTerminal",
       "preLaunchTask": "build + cap sync"
     }

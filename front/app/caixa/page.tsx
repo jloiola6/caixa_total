@@ -41,6 +41,7 @@ import {
   seedDemoData,
 } from "@/lib/db"
 import { formatCurrency } from "@/lib/format"
+import { syncToServer } from "@/lib/sync"
 import type { Product, CartItem, PaymentSplit } from "@/lib/types"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcut"
 import { toast } from "sonner"
@@ -180,6 +181,7 @@ export default function CaixaPage() {
     setSearchResults([])
     setCheckoutOpen(false)
     setSaleCompleteOpen(true)
+    syncToServer().catch(() => {})
   }
 
   function handleClearCart() {

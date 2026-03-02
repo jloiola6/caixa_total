@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductCategory {
+  roupas
+  tenis
+  controles
+  eletronicos
+  diversos
+}
+
+enum PaymentMethod {
+  dinheiro
+  credito
+  debito
+  fiado
+}
+
+model Product {
+  id            String         @id
+  name          String
+  sku           String?
+  barcode       String?
+  stock         Int            @default(0)
+  priceCents    Int
+  costCents     Int?
+  category      ProductCategory
+  imageUrl      String?
+  brand         String?
+  model         String?
+  size          String?
+  color         String?
+  description   String?
+  controlNumber String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Sale {
+  id            String         @id
+  createdAt     DateTime
+  totalCents    Int
+  itemsCount    Int
+  customerName  String?
+  customerPhone String?
+  updatedAt     DateTime       @default(now())
+  items        SaleItem[]
+  payments      SalePayment[]
+}
+
+model SaleItem {
+  id             String  @id
+  saleId         String
+  productId      String
+  productName    String
+  sku            String?
+  qty            Int
+  unitPriceCents Int
+  lineTotalCents Int
+  sale           Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+}
+
+model SalePayment {
+  id          String        @id
+  saleId      String
+  method      PaymentMethod
+  amountCents Int
+  sale        Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+}
+
+model StockLog {
+  id          String   @id
+  productId   String
+  productName String
+  delta       Int
+  reason      String?
+  createdAt   DateTime
+}

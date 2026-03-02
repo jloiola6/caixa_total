@@ -2,10 +2,18 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "front: install",
+      "type": "shell",
+      "command": "pnpm install",
+      "options": { "cwd": "${workspaceFolder}/front" },
+      "group": "none",
+      "presentation": { "reveal": "silent" }
+    },
+    {
       "label": "next: build",
       "type": "shell",
       "command": "pnpm run build",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": { "cwd": "${workspaceFolder}/front" },
       "group": "build",
       "presentation": { "reveal": "silent" }
     },
@@ -13,7 +21,7 @@
       "label": "cap: sync",
       "type": "shell",
       "command": "npx cap sync",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": { "cwd": "${workspaceFolder}/front" },
       "dependsOn": "next: build",
       "group": "build",
       "presentation": { "reveal": "silent" }
