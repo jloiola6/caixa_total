@@ -38,7 +38,6 @@ import {
   getProducts,
   getProductByBarcode,
   createSale,
-  seedDemoData,
 } from "@/lib/db"
 import { formatCurrency } from "@/lib/format"
 import { syncToServer } from "@/lib/sync"
@@ -56,10 +55,6 @@ export default function CaixaPage() {
   const [saleCompleteOpen, setSaleCompleteOpen] = useState(false)
   const [lastSaleTotal, setLastSaleTotal] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    seedDemoData()
-  }, [])
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.product.priceCents * item.qty, 0),

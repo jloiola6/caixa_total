@@ -33,6 +33,7 @@ const STOCK_LOGS_KEY = "caixatotal_stock_logs"
 // --------------- Products ---------------
 
 export function getProducts(query?: string): Product[] {
+  migrateProducts()
   const products = read<Product>(PRODUCTS_KEY)
   if (!query || query.trim() === "") return products.sort((a, b) => a.name.localeCompare(b.name))
 
@@ -304,9 +305,9 @@ export function getDailySummary(
   )
 }
 
-// --------------- Seed Data ---------------
+// --------------- Migration ---------------
 
-// Migrate old products that may not have the new category fields
+// Migrate old products that may not have the new category fields (no demo seed)
 function migrateProducts() {
   const products = read<Product>(PRODUCTS_KEY)
   let needsWrite = false
@@ -327,33 +328,4 @@ function migrateProducts() {
     }
   }
   if (needsWrite) write(PRODUCTS_KEY, products)
-}
-
-export function seedDemoData() {
-  migrateProducts()
-  const existing = read<Product>(PRODUCTS_KEY)
-  if (existing.length > 0) return
-
-  const demoProducts: Omit<Product, "id" | "createdAt" | "updatedAt">[] = [
-    { name: "Camiseta Basica Preta M", sku: "CB-PM", barcode: "7891000100103", stock: 25, priceCents: 4990, costCents: 2200, category: "roupas", imageUrl: null, brand: "Hering", model: null, size: "M", color: "Preto", description: null, controlNumber: null },
-    { name: "Calca Jeans Skinny 42", sku: "CJ-S42", barcode: "7891000200206", stock: 12, priceCents: 12990, costCents: 6500, category: "roupas", imageUrl: null, brand: "Levi's", model: "Skinny Fit", size: "42", color: "Azul escuro", description: null, controlNumber: null },
-    { name: "Moletom Canguru G", sku: "MC-G", barcode: "7891000300309", stock: 8, priceCents: 8990, costCents: 4000, category: "roupas", imageUrl: null, brand: null, model: null, size: "G", color: "Cinza", description: null, controlNumber: null },
-    { name: "Tenis Nike Air Max 90", sku: "TN-AM90", barcode: "7891000400402", stock: 6, priceCents: 59990, costCents: 32000, category: "tenis", imageUrl: null, brand: "Nike", model: "Air Max 90", size: "42", color: "Branco/Preto", description: null, controlNumber: null },
-    { name: "Tenis Adidas Ultraboost", sku: "TA-UB", barcode: "7891000500505", stock: 4, priceCents: 79990, costCents: 45000, category: "tenis", imageUrl: null, brand: "Adidas", model: "Ultraboost 23", size: "41", color: "Preto", description: null, controlNumber: null },
-    { name: "Controle Samsung BN59", sku: "CS-BN59", barcode: "7891000600608", stock: 30, priceCents: 3490, costCents: 1500, category: "controles", imageUrl: null, brand: "Samsung", model: "BN59-01199F", size: null, color: null, description: "Controle para TVs Samsung Smart", controlNumber: "BN59-01199F" },
-    { name: "Controle LG AKB75095315", sku: "CL-AKB", barcode: "7891000700701", stock: 20, priceCents: 2990, costCents: 1200, category: "controles", imageUrl: null, brand: "LG", model: "AKB75095315", size: null, color: null, description: "Controle para TVs LG LED/LCD", controlNumber: "AKB75095315" },
-    { name: "Cabo Coaxial RG6 10m", sku: "CC-RG6", barcode: "7891000800804", stock: 50, priceCents: 1990, costCents: 800, category: "eletronicos", imageUrl: null, brand: null, model: "RG6", size: null, color: null, description: "Cabo coaxial RG6 com 10 metros e conectores F", controlNumber: null },
-    { name: "Box TV MXQ Pro 4K", sku: "BT-MXQ", barcode: "7891000900907", stock: 10, priceCents: 19990, costCents: 9000, category: "eletronicos", imageUrl: null, brand: "MXQ", model: "Pro 4K", size: null, color: null, description: "Box TV Android 4K com 2GB RAM e 16GB armazenamento", controlNumber: null },
-    { name: "Fonte 12V 2A Universal", sku: "FT-12V", barcode: "7891001000109", stock: 40, priceCents: 2490, costCents: 900, category: "diversos", imageUrl: null, brand: null, model: null, size: null, color: null, description: "Fonte de alimentacao 12V 2A com plug P4 universal", controlNumber: null },
-  ]
-
-  const now = new Date().toISOString()
-  const products: Product[] = demoProducts.map((p) => ({
-    ...p,
-    id: crypto.randomUUID(),
-    createdAt: now,
-    updatedAt: now,
-  }))
-
-  write(PRODUCTS_KEY, products)
 }

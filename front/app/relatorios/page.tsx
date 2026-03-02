@@ -47,7 +47,6 @@ import {
   getSaleItems,
   getDailySummary,
   getTopProducts,
-  seedDemoData,
 } from "@/lib/db"
 import {
   getReportSummary,
@@ -81,10 +80,6 @@ export default function RelatoriosPage() {
   const [apiTopProducts, setApiTopProducts] = useState<{ productId: string; productName: string; totalQty: number; totalCents: number }[]>([])
   const [apiLoading, setApiLoading] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!readOnly) seedDemoData()
-  }, [readOnly])
 
   const startISO = useMemo(
     () => startOfDay(dateRange.from).toISOString(),
