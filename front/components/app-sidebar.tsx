@@ -1,8 +1,9 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ShoppingCart, Package, BarChart3 } from "lucide-react"
+import { ShoppingCart, Package, BarChart3, RefreshCw } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +17,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { SyncModal } from "@/components/sync-modal"
 
 const navItems = [
   { title: "Caixa", href: "/caixa", icon: ShoppingCart },
@@ -25,6 +27,7 @@ const navItems = [
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const [syncOpen, setSyncOpen] = useState(false)
 
   return (
     <Sidebar>
@@ -66,9 +69,22 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border p-2">
-        <ThemeToggle />
+      <SidebarFooter className="border-t border-sidebar-border px-2 py-3">
+        <SidebarGroup>
+          <SidebarGroupContent className="flex flex-col gap-0.5">
+            <SidebarMenuButton
+              tooltip="Sincronizar"
+              onClick={() => setSyncOpen(true)}
+              className="w-full justify-center"
+            >
+              <RefreshCw className="size-4" />
+              <span>Sincronizar</span>
+            </SidebarMenuButton>
+            <ThemeToggle variant="sidebar" className="w-full justify-center" />
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarFooter>
+      <SyncModal open={syncOpen} onOpenChange={setSyncOpen} />
     </Sidebar>
   )
 }

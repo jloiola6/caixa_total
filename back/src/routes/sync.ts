@@ -80,13 +80,16 @@ syncRouter.post("/", async (req, res) => {
     const products = body.products ?? [];
     const sales = body.sales ?? [];
     const saleItems = body.sale_items ?? [];
-    let salePayments = body.sale_payments ?? [];
+    const explicitSalePayments = body.sale_payments ?? [];
     const stockLogs = body.stock_logs ?? [];
 
-    if (salePayments.length === 0 && sales.length > 0) {
+    const now = new Date();
+
+    const paymentsFromSales: { id: string; saleId: string; method: string; amountCents: number }[] = [];
+    if (explicitSalePayments.length === 0 && sales.length > 0) {
       for (const sale of sales) {
         for (const p of sale.payments ?? []) {
-          salePayments.push({
+          paymentsFromSales.push({
             id: crypto.randomUUID(),
             saleId: sale.id,
             method: p.method,
@@ -96,7 +99,14 @@ syncRouter.post("/", async (req, res) => {
       }
     }
 
-    const now = new Date();
+    const saleIdsWithPayments = new Set<string>();
+    for (const sp of explicitSalePayments) saleIdsWithPayments.add(sp.saleId);
+    for (const p of paymentsFromSales) saleIdsWithPayments.add(p.saleId);
+    if (saleIdsWithPayments.size > 0) {
+      await prisma.salePayment.deleteMany({
+        where: { saleId: { in: [...saleIdsWithPayments] } },
+      });
+    }
 
     for (const p of products) {
       await prisma.product.upsert({
@@ -188,20 +198,18 @@ syncRouter.post("/", async (req, res) => {
       });
     }
 
-    for (const sp of salePayments) {
-      await prisma.salePayment.upsert({
-        where: { id: sp.id },
-        create: {
+    const paymentsToCreate =
+      explicitSalePayments.length > 0
+        ? explicitSalePayments
+        : paymentsFromSales;
+    if (paymentsToCreate.length > 0) {
+      await prisma.salePayment.createMany({
+        data: paymentsToCreate.map((sp) => ({
           id: sp.id,
           saleId: sp.saleId,
           method: toPaymentMethod(sp.method),
           amountCents: sp.amountCents,
-        },
-        update: {
-          saleId: sp.saleId,
-          method: toPaymentMethod(sp.method),
-          amountCents: sp.amountCents,
-        },
+        })),
       });
     }
 

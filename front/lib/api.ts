@@ -8,6 +8,21 @@ export function getApiUrl(path: string): string {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+export type ServerSyncState = {
+  products: { id: string; updatedAt: string; [key: string]: unknown }[];
+  sales: { id: string; createdAt: string; [key: string]: unknown }[];
+  sale_items: { id: string; [key: string]: unknown }[];
+  sale_payments: { id: string; [key: string]: unknown }[];
+  stock_logs: { id: string; createdAt: string; [key: string]: unknown }[];
+};
+
+export async function getSyncState(): Promise<ServerSyncState> {
+  const since = "1970-01-01T00:00:00.000Z";
+  const res = await fetch(getApiUrl(`/sync?since=${encodeURIComponent(since)}`));
+  if (!res.ok) throw new Error(`Falha ao obter dados do servidor: ${res.status}`);
+  return res.json();
+}
+
 export async function postSync(payload: {
   products: unknown[];
   sales: unknown[];
