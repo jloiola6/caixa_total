@@ -6,6 +6,7 @@ import { ShoppingCart, Package, BarChart3 } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -14,6 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 const navItems = [
   { title: "Caixa", href: "/caixa", icon: ShoppingCart },
@@ -64,6 +66,9 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="border-t border-sidebar-border p-2">
+        <ThemeToggle />
+      </SidebarFooter>
     </Sidebar>
   )
 }

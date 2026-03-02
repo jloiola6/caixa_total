@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
+import { ThemeProvider } from '@/components/theme-provider'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
 import './globals.css'
@@ -37,22 +38,24 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
       <body className="font-sans antialiased">
-        <SidebarProvider>
-          <AppSidebar />
-          <SidebarInset>
-            <header className="flex h-12 items-center gap-2 border-b border-border px-4 md:hidden">
-              <SidebarTrigger />
-              <span className="text-sm font-semibold">CaixaTotal</span>
-            </header>
-            <div className="flex-1 overflow-auto">
-              {children}
-            </div>
-          </SidebarInset>
-        </SidebarProvider>
-        <Toaster richColors position="top-right" />
-        <Analytics />
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+              <header className="flex h-12 items-center gap-2 border-b border-border px-4 md:hidden">
+                <SidebarTrigger />
+                <span className="text-sm font-semibold">CaixaTotal</span>
+              </header>
+              <div className="flex-1 overflow-auto">
+                {children}
+              </div>
+            </SidebarInset>
+          </SidebarProvider>
+          <Toaster richColors position="top-right" />
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   )
