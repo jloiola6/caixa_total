@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "next: build",
+      "type": "shell",
+      "command": "pnpm run build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "cap: sync",
+      "type": "shell",
+      "command": "npx cap sync",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "next: build",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "build + cap sync",
+      "dependsOrder": "sequence",
+      "dependsOn": ["next: build", "cap: sync"],
+      "group": "build"
+    }
+  ]
+}

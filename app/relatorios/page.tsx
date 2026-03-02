@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, Fragment } from "react"
 import { format, subDays, startOfDay, endOfDay } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import {
@@ -345,9 +345,8 @@ export default function RelatoriosPage() {
                 </TableHeader>
                 <TableBody>
                   {sales.map((sale) => (
-                    <>
+                    <Fragment key={sale.id}>
                       <TableRow
-                        key={sale.id}
                         className="cursor-pointer hover:bg-accent/50"
                         onClick={() => toggleSaleExpand(sale.id)}
                       >
@@ -438,7 +437,7 @@ export default function RelatoriosPage() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>

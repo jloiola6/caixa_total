@@ -2,13 +2,20 @@
   "name": "my-project",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "electron": "electron .",
+    "build:desktop": "next build && electron .",
+    "android:emulator": "npx cap run android",
+    "android:device": "npx cap run android",
+    "cap:sync": "npx cap sync"
   },
   "dependencies": {
+    "@capacitor/core": "^6.0.0",
     "@hookform/resolvers": "^3.9.1",
     "@vercel/analytics": "1.6.1",
     "@radix-ui/react-accordion": "1.2.12",
@@ -61,6 +68,9 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "electron": "^33.0.0",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^22",
     "@types/react": "19.2.14",
@@ -69,5 +79,10 @@
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3"
+  },
+  "capacitor": {
+    "appId": "com.caixatotal.app",
+    "appName": "Caixa Total",
+    "webDir": "out"
   }
 }
