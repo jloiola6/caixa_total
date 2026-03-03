@@ -11,6 +11,19 @@ import type {
 
 // --------------- helpers ---------------
 
+/** Gera UUID v4; funciona em browser e em SSR (Next/Node onde crypto.randomUUID pode não existir). */
+function randomUUID(): string {
+  const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined
+  if (c && typeof c.randomUUID === "function") return c.randomUUID()
+  const bytes = new Uint8Array(16)
+  if (c?.getRandomValues) c.getRandomValues(bytes)
+  else for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 function read<T>(key: string): T[] {
   if (typeof window === "undefined") return []
   try {
@@ -25,16 +38,30 @@ function write<T>(key: string, data: T[]) {
   localStorage.setItem(key, JSON.stringify(data))
 }
 
-const PRODUCTS_KEY = "caixatotal_products"
-const SALES_KEY = "caixatotal_sales"
-const SALE_ITEMS_KEY = "caixatotal_sale_items"
-const STOCK_LOGS_KEY = "caixatotal_stock_logs"
+function getStoreSuffix(): string {
+  if (typeof window === "undefined") return ""
+  const id = localStorage.getItem("caixatotal_storeId")
+  return id ? `_${id}` : ""
+}
+
+export function getProductsKey() {
+  return `caixatotal_products${getStoreSuffix()}`
+}
+export function getSalesKey() {
+  return `caixatotal_sales${getStoreSuffix()}`
+}
+export function getSaleItemsKey() {
+  return `caixatotal_sale_items${getStoreSuffix()}`
+}
+export function getStockLogsKey() {
+  return `caixatotal_stock_logs${getStoreSuffix()}`
+}
 
 // --------------- Products ---------------
 
 export function getProducts(query?: string): Product[] {
   migrateProducts()
-  const products = read<Product>(PRODUCTS_KEY)
+  const products = read<Product>(getProductsKey())
   if (!query || query.trim() === "") return products.sort((a, b) => a.name.localeCompare(b.name))
 
   const q = query.toLowerCase().trim()
@@ -52,17 +79,17 @@ export function getProducts(query?: string): Product[] {
 }
 
 export function getProductById(id: string): Product | undefined {
-  return read<Product>(PRODUCTS_KEY).find((p) => p.id === id)
+  return read<Product>(getProductsKey()).find((p) => p.id === id)
 }
 
 export function getProductByBarcode(barcode: string): Product | undefined {
-  return read<Product>(PRODUCTS_KEY).find(
+  return read<Product>(getProductsKey()).find(
     (p) => p.barcode && p.barcode === barcode
   )
 }
 
 export function upsertProduct(product: Partial<Product> & { name: string; priceCents: number; category: Product["category"] }): Product {
-  const products = read<Product>(PRODUCTS_KEY)
+  const products = read<Product>(getProductsKey())
   const now = new Date().toISOString()
 
   const existing = product.id ? products.find((p) => p.id === product.id) : null
@@ -75,12 +102,12 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
     }
     const idx = products.findIndex((p) => p.id === existing.id)
     products[idx] = updated
-    write(PRODUCTS_KEY, products)
+    write(getProductsKey(), products)
     return updated
   }
 
   const newProduct: Product = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name: product.name,
     sku: product.sku ?? null,
     barcode: product.barcode ?? null,
@@ -99,20 +126,20 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
     updatedAt: now,
   }
   products.push(newProduct)
-  write(PRODUCTS_KEY, products)
+  write(getProductsKey(), products)
   return newProduct
 }
 
 export function deleteProduct(id: string): boolean {
-  const products = read<Product>(PRODUCTS_KEY)
+  const products = read<Product>(getProductsKey())
   const filtered = products.filter((p) => p.id !== id)
   if (filtered.length === products.length) return false
-  write(PRODUCTS_KEY, filtered)
+  write(getProductsKey(), filtered)
   return true
 }
 
 export function adjustStock(productId: string, delta: number, reason?: string | null): Product | null {
-  const products = read<Product>(PRODUCTS_KEY)
+  const products = read<Product>(getProductsKey())
   const idx = products.findIndex((p) => p.id === productId)
   if (idx === -1) return null
 
@@ -124,26 +151,26 @@ export function adjustStock(productId: string, delta: number, reason?: string | 
     stock: newStock,
     updatedAt: new Date().toISOString(),
   }
-  write(PRODUCTS_KEY, products)
+  write(getProductsKey(), products)
 
   // Save stock log
   const log: StockLog = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     productId,
     productName: products[idx].name,
     delta,
     reason: reason?.trim() || null,
     createdAt: new Date().toISOString(),
   }
-  const logs = read<StockLog>(STOCK_LOGS_KEY)
+  const logs = read<StockLog>(getStockLogsKey())
   logs.push(log)
-  write(STOCK_LOGS_KEY, logs)
+  write(getStockLogsKey(), logs)
 
   return products[idx]
 }
 
 export function getStockLogs(productId?: string): StockLog[] {
-  let logs = read<StockLog>(STOCK_LOGS_KEY)
+  let logs = read<StockLog>(getStockLogsKey())
   if (productId) {
     logs = logs.filter((l) => l.productId === productId)
   }
@@ -165,7 +192,7 @@ export function createSale(
   const { items, payments, customerName, customerPhone } = input
   if (items.length === 0) return null
 
-  const products = read<Product>(PRODUCTS_KEY)
+  const products = read<Product>(getProductsKey())
 
   // Validate stock
   for (const item of items) {
@@ -182,13 +209,13 @@ export function createSale(
       updatedAt: new Date().toISOString(),
     }
   }
-  write(PRODUCTS_KEY, products)
+  write(getProductsKey(), products)
 
-  const saleId = crypto.randomUUID()
+  const saleId = randomUUID()
   const now = new Date().toISOString()
 
   const saleItems: SaleItem[] = items.map((item) => ({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     saleId,
     productId: item.product.id,
     productName: item.product.name,
@@ -211,19 +238,19 @@ export function createSale(
     customerPhone: customerPhone?.trim() || null,
   }
 
-  const allSales = read<Sale>(SALES_KEY)
+  const allSales = read<Sale>(getSalesKey())
   allSales.push(sale)
-  write(SALES_KEY, allSales)
+  write(getSalesKey(), allSales)
 
-  const allSaleItems = read<SaleItem>(SALE_ITEMS_KEY)
+  const allSaleItems = read<SaleItem>(getSaleItemsKey())
   allSaleItems.push(...saleItems)
-  write(SALE_ITEMS_KEY, allSaleItems)
+  write(getSaleItemsKey(), allSaleItems)
 
   return { sale, saleItems }
 }
 
 export function getSales(startDate?: string, endDate?: string): Sale[] {
-  let sales = read<Sale>(SALES_KEY)
+  let sales = read<Sale>(getSalesKey())
 
   if (startDate) {
     sales = sales.filter((s) => s.createdAt >= startDate)
@@ -236,7 +263,7 @@ export function getSales(startDate?: string, endDate?: string): Sale[] {
 }
 
 export function getSaleItems(saleId: string): SaleItem[] {
-  return read<SaleItem>(SALE_ITEMS_KEY).filter((si) => si.saleId === saleId)
+  return read<SaleItem>(getSaleItemsKey()).filter((si) => si.saleId === saleId)
 }
 
 // --------------- Reports ---------------
@@ -246,7 +273,7 @@ export function getTopProducts(
   endDate?: string,
   limit = 10
 ): TopProduct[] {
-  let saleItems = read<SaleItem>(SALE_ITEMS_KEY)
+  let saleItems = read<SaleItem>(getSaleItemsKey())
 
   if (startDate || endDate) {
     const saleIds = new Set(
@@ -309,7 +336,7 @@ export function getDailySummary(
 
 // Migrate old products that may not have the new category fields (no demo seed)
 function migrateProducts() {
-  const products = read<Product>(PRODUCTS_KEY)
+  const products = read<Product>(getProductsKey())
   let needsWrite = false
   for (let i = 0; i < products.length; i++) {
     if (!products[i].category) {
@@ -327,5 +354,5 @@ function migrateProducts() {
       needsWrite = true
     }
   }
-  if (needsWrite) write(PRODUCTS_KEY, products)
+  if (needsWrite) write(getProductsKey(), products)
 }

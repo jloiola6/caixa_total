@@ -1,9 +1,6 @@
 import { postSync } from "./api"
-
-const PRODUCTS_KEY = "caixatotal_products"
-const SALES_KEY = "caixatotal_sales"
-const SALE_ITEMS_KEY = "caixatotal_sale_items"
-const STOCK_LOGS_KEY = "caixatotal_stock_logs"
+import { getProductsKey, getSalesKey, getSaleItemsKey, getStockLogsKey } from "./db"
+import { getStoredStoreId } from "./auth-api"
 
 function read<T>(key: string): T[] {
   if (typeof window === "undefined") return []
@@ -17,16 +14,20 @@ function read<T>(key: string): T[] {
 
 export async function syncToServer(): Promise<{ ok: boolean; error?: string }> {
   try {
-    const products = read<unknown>(PRODUCTS_KEY)
-    const sales = read<unknown>(SALES_KEY)
-    const saleItems = read<unknown>(SALE_ITEMS_KEY)
-    const stockLogs = read<unknown>(STOCK_LOGS_KEY)
-    await postSync({
-      products,
-      sales,
-      sale_items: saleItems,
-      stock_logs: stockLogs,
-    })
+    const storeId = getStoredStoreId()
+    const products = read<unknown>(getProductsKey())
+    const sales = read<unknown>(getSalesKey())
+    const saleItems = read<unknown>(getSaleItemsKey())
+    const stockLogs = read<unknown>(getStockLogsKey())
+    await postSync(
+      {
+        products,
+        sales,
+        sale_items: saleItems,
+        stock_logs: stockLogs,
+      },
+      storeId ?? undefined
+    )
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }

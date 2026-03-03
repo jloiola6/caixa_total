@@ -98,6 +98,13 @@ export default function ProdutosPage() {
     loadProducts()
   }, [loadProducts])
 
+  // Recarrega lista quando a sincronização atualiza o localStorage (priorizar servidor)
+  useEffect(() => {
+    const onStorage = () => loadProducts()
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [loadProducts])
+
   function handleEdit(product: Product) {
     setEditingProduct(product)
     setFormOpen(true)

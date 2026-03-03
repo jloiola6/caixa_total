@@ -1,10 +1,25 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
+import { authMiddleware } from "../middleware/auth.js";
+import { requireStoreUserOrSuperAdmin } from "../middleware/auth.js";
 
 export const reportRouter = Router();
+reportRouter.use(authMiddleware);
+reportRouter.use(requireStoreUserOrSuperAdmin);
+
+function getStoreId(req: { user?: { role: string; storeId: string | null }; query?: { storeId?: string } }) {
+  return req.user!.role === "SUPER_ADMIN" && req.query?.storeId
+    ? (req.query.storeId as string)
+    : req.user!.storeId!;
+}
 
 reportRouter.get("/summary", async (req, res) => {
   try {
+    const storeId = getStoreId(req);
+    if (!storeId) {
+      res.status(400).json({ error: "storeId é obrigatório (query storeId para super admin)" });
+      return;
+    }
     const start = req.query.start as string | undefined;
     const end = req.query.end as string | undefined;
     const startDate = start ? new Date(start) : new Date(0);
@@ -12,6 +27,7 @@ reportRouter.get("/summary", async (req, res) => {
 
     const sales = await prisma.sale.findMany({
       where: {
+        storeId,
         createdAt: { gte: startDate, lte: endDate },
       },
       orderBy: { createdAt: "asc" },
@@ -47,13 +63,18 @@ reportRouter.get("/summary", async (req, res) => {
 
 reportRouter.get("/sales", async (req, res) => {
   try {
+    const storeId = getStoreId(req);
+    if (!storeId) {
+      res.status(400).json({ error: "storeId é obrigatório (query storeId para super admin)" });
+      return;
+    }
     const start = req.query.start as string | undefined;
     const end = req.query.end as string | undefined;
     const startDate = start ? new Date(start) : new Date(0);
     const endDate = end ? new Date(end) : new Date();
 
     const sales = await prisma.sale.findMany({
-      where: { createdAt: { gte: startDate, lte: endDate } },
+      where: { storeId, createdAt: { gte: startDate, lte: endDate } },
       include: { items: true, payments: true },
       orderBy: { createdAt: "desc" },
     });
@@ -77,6 +98,11 @@ reportRouter.get("/sales", async (req, res) => {
 
 reportRouter.get("/top-products", async (req, res) => {
   try {
+    const storeId = getStoreId(req);
+    if (!storeId) {
+      res.status(400).json({ error: "storeId é obrigatório (query storeId para super admin)" });
+      return;
+    }
     const start = req.query.start as string | undefined;
     const end = req.query.end as string | undefined;
     const limit = Math.min(Number(req.query.limit) || 10, 100);
@@ -86,6 +112,7 @@ reportRouter.get("/top-products", async (req, res) => {
     const saleItems = await prisma.saleItem.findMany({
       where: {
         sale: {
+          storeId,
           createdAt: { gte: startDate, lte: endDate },
         },
       },

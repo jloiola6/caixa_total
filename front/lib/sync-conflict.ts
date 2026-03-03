@@ -1,9 +1,5 @@
 import type { ServerSyncState } from "./api"
-
-const PRODUCTS_KEY = "caixatotal_products"
-const SALES_KEY = "caixatotal_sales"
-const SALE_ITEMS_KEY = "caixatotal_sale_items"
-const STOCK_LOGS_KEY = "caixatotal_stock_logs"
+import { getProductsKey, getSalesKey, getSaleItemsKey, getStockLogsKey } from "./db"
 
 function readLocal<T>(key: string): T[] {
   if (typeof window === "undefined") return []
@@ -38,10 +34,10 @@ function getSaleLabel(s: { id: string; totalCents?: number; createdAt?: string }
 
 export function computeConflicts(server: ServerSyncState): ConflictItem[] {
   const conflicts: ConflictItem[] = []
-  const localProducts = readLocal<{ id: string; updatedAt: string; name?: string }>(PRODUCTS_KEY)
-  const localSales = readLocal<{ id: string; createdAt: string; totalCents?: number }>(SALES_KEY)
-  const localSaleItems = readLocal<{ id: string; saleId: string }>(SALE_ITEMS_KEY)
-  const localStockLogs = readLocal<{ id: string; createdAt: string; productName?: string }>(STOCK_LOGS_KEY)
+  const localProducts = readLocal<{ id: string; updatedAt: string; name?: string }>(getProductsKey())
+  const localSales = readLocal<{ id: string; createdAt: string; totalCents?: number }>(getSalesKey())
+  const localSaleItems = readLocal<{ id: string; saleId: string }>(getSaleItemsKey())
+  const localStockLogs = readLocal<{ id: string; createdAt: string; productName?: string }>(getStockLogsKey())
 
   const serverProductsById = new Map(server.products.map((p) => [p.id, p]))
   const serverSalesById = new Map(server.sales.map((s) => [s.id, s]))
@@ -131,8 +127,8 @@ export function applyServerState(server: ServerSyncState): void {
     }
   })
   if (typeof window === "undefined") return
-  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(server.products))
-  localStorage.setItem(SALES_KEY, JSON.stringify(salesWithPayments))
-  localStorage.setItem(SALE_ITEMS_KEY, JSON.stringify(server.sale_items))
-  localStorage.setItem(STOCK_LOGS_KEY, JSON.stringify(server.stock_logs))
+  localStorage.setItem(getProductsKey(), JSON.stringify(server.products))
+  localStorage.setItem(getSalesKey(), JSON.stringify(salesWithPayments))
+  localStorage.setItem(getSaleItemsKey(), JSON.stringify(server.sale_items))
+  localStorage.setItem(getStockLogsKey(), JSON.stringify(server.stock_logs))
 }

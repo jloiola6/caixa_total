@@ -2,8 +2,8 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { ShoppingCart, Package, BarChart3, RefreshCw } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { ShoppingCart, Package, BarChart3, RefreshCw, Shield, LogOut } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { SyncModal } from "@/components/sync-modal"
+import { useAuth } from "@/contexts/auth-context"
 
 const navItems = [
   { title: "Caixa", href: "/caixa", icon: ShoppingCart },
@@ -27,7 +28,14 @@ const navItems = [
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, logout } = useAuth()
   const [syncOpen, setSyncOpen] = useState(false)
+
+  function handleLogout() {
+    logout()
+    router.replace("/login")
+  }
 
   return (
     <Sidebar>
@@ -65,6 +73,20 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              {user?.role === "SUPER_ADMIN" && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === "/admin"}
+                    tooltip="Admin"
+                  >
+                    <Link href="/admin">
+                      <Shield />
+                      <span>Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -72,15 +94,25 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border px-2 py-3">
         <SidebarGroup>
           <SidebarGroupContent className="flex flex-col gap-0.5">
+            {user?.role === "STORE_USER" && (
+              <SidebarMenuButton
+                tooltip="Sincronizar"
+                onClick={() => setSyncOpen(true)}
+                className="w-full justify-center"
+              >
+                <RefreshCw className="size-4" />
+                <span>Sincronizar</span>
+              </SidebarMenuButton>
+            )}
+            <ThemeToggle variant="sidebar" className="w-full justify-center" />
             <SidebarMenuButton
-              tooltip="Sincronizar"
-              onClick={() => setSyncOpen(true)}
+              tooltip="Sair"
+              onClick={handleLogout}
               className="w-full justify-center"
             >
-              <RefreshCw className="size-4" />
-              <span>Sincronizar</span>
+              <LogOut className="size-4" />
+              <span>Sair</span>
             </SidebarMenuButton>
-            <ThemeToggle variant="sidebar" className="w-full justify-center" />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarFooter>

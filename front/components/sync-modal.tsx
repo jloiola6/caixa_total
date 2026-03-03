@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { getSyncState, type ServerSyncState } from "@/lib/api"
+import { getStoredStoreId } from "@/lib/auth-api"
 import { computeConflicts, applyServerState, type ConflictItem } from "@/lib/sync-conflict"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
@@ -48,7 +49,8 @@ export function SyncModal({
     setError(null)
     setStep("checking")
     try {
-      const server = await getSyncState()
+      const storeId = getStoredStoreId() ?? undefined
+      const server = await getSyncState(storeId)
       setServerState(server)
       const list = computeConflicts(server)
       setConflicts(list)

@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { ProductCategory, PaymentMethod } from "@prisma/client";
+import { authMiddleware } from "../middleware/auth.js";
+import { requireStoreUserOrSuperAdmin } from "../middleware/auth.js";
 
 export const syncRouter = Router();
+syncRouter.use(authMiddleware);
+syncRouter.use(requireStoreUserOrSuperAdmin);
 
 type ProductPayload = {
   id: string;
@@ -76,7 +80,13 @@ function toPaymentMethod(s: string): PaymentMethod {
 
 syncRouter.post("/", async (req, res) => {
   try {
-    const body = req.body as SyncBody;
+    const body = req.body as SyncBody & { storeId?: string };
+    let storeId: string | null =
+      req.user!.role === "STORE_USER" ? req.user!.storeId : (body.storeId ?? null) || null;
+    if (!storeId) {
+      res.status(400).json({ error: "storeId é obrigatório (envie no body para super admin)" });
+      return;
+    }
     const products = body.products ?? [];
     const sales = body.sales ?? [];
     const saleItems = body.sale_items ?? [];
@@ -113,6 +123,7 @@ syncRouter.post("/", async (req, res) => {
         where: { id: p.id },
         create: {
           id: p.id,
+          storeId,
           name: p.name,
           sku: p.sku ?? null,
           barcode: p.barcode ?? null,
@@ -155,6 +166,7 @@ syncRouter.post("/", async (req, res) => {
         where: { id: s.id },
         create: {
           id: s.id,
+          storeId,
           createdAt: new Date(s.createdAt),
           totalCents: s.totalCents,
           itemsCount: s.itemsCount,
@@ -218,6 +230,7 @@ syncRouter.post("/", async (req, res) => {
         where: { id: sl.id },
         create: {
           id: sl.id,
+          storeId,
           productId: sl.productId,
           productName: sl.productName,
           delta: sl.delta,
@@ -244,14 +257,31 @@ syncRouter.post("/", async (req, res) => {
 syncRouter.get("/", async (req, res) => {
   try {
     const since = req.query.since as string | undefined;
+    const storeIdParam = req.query.storeId as string | undefined;
+    const storeId =
+      req.user!.role === "SUPER_ADMIN" && storeIdParam ? storeIdParam : req.user!.storeId;
+    if (!storeId) {
+      res.status(400).json({ error: "storeId é obrigatório (query storeId para super admin)" });
+      return;
+    }
     const sinceDate = since ? new Date(since) : new Date(0);
+    const storeFilter = { storeId };
 
     const [products, sales, saleItems, salePayments, stockLogs] = await Promise.all([
-      prisma.product.findMany({ where: { updatedAt: { gt: sinceDate } } }),
-      prisma.sale.findMany({ where: { updatedAt: { gt: sinceDate } }, include: { items: true, payments: true } }),
-      prisma.saleItem.findMany({ where: { sale: { updatedAt: { gt: sinceDate } } } }),
-      prisma.salePayment.findMany({ where: { sale: { updatedAt: { gt: sinceDate } } } }),
-      prisma.stockLog.findMany({ where: { createdAt: { gt: sinceDate } } }),
+      prisma.product.findMany({ where: { ...storeFilter, updatedAt: { gt: sinceDate } } }),
+      prisma.sale.findMany({
+        where: { ...storeFilter, updatedAt: { gt: sinceDate } },
+        include: { items: true, payments: true },
+      }),
+      prisma.saleItem.findMany({
+        where: { sale: { storeId, updatedAt: { gt: sinceDate } } },
+      }),
+      prisma.salePayment.findMany({
+        where: { sale: { storeId, updatedAt: { gt: sinceDate } } },
+      }),
+      prisma.stockLog.findMany({
+        where: { ...storeFilter, createdAt: { gt: sinceDate } },
+      }),
     ]);
 
     const salesWithPayments = sales.map((s) => ({
