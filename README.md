@@ -31,82 +31,91 @@ A interface usa **Next.js** e mantém parte do fluxo operacional em `localStorag
 
 ### Back-end (`back/`)
 
-A API usa **Express** com **Prisma** sobre **PostgreSQL**. O banco centraliza:
+A API usa **Express** com **Prisma** sobre **PostgreSQL**. O backend inclui:
 
-- lojas;
-- usuários;
-- tokens de redefinição de senha;
-- produtos;
-- vendas;
-- itens de venda;
-- pagamentos;
-- movimentações de estoque.
-
-Além disso, o backend expõe rotas de saúde, autenticação, administração, sincronização e relatórios.
+- **helmet** para headers de segurança HTTP;
+- **CORS restrito** configurável via `FRONT_URL` (aceita múltiplas origens separadas por vírgula);
+- **validação de env vars obrigatórias** no boot (`DATABASE_URL` e `JWT_SECRET` são exigidas);
+- rotas de saúde, autenticação, administração, sincronização e relatórios.
 
 ## Stack utilizada
 
 ### Front
 
-- Next.js
-- React
+- Next.js 16
+- React 19
 - TypeScript
-- Tailwind CSS
+- Tailwind CSS 4
 - Electron
 - Capacitor
 
 ### Back
 
-- Node.js
+- Node.js 22
 - Express
 - TypeScript
 - Prisma
 - PostgreSQL
 - JWT
+- Helmet
 - Resend
-
-## Requisitos
-
-Antes de começar, tenha instalado:
-
-- **Node.js 22** ou compatível com o projeto.
-- **pnpm** para instalar e executar os apps Node.
-- **Docker + Docker Compose** se quiser subir o PostgreSQL e o backend por container.
-- **PostgreSQL 16+** se quiser rodar o banco localmente sem Docker.
-
-> Observação: como o repositório possui apps separados em `front/` e `back/`, o fluxo mais seguro é instalar as dependências em cada pasta individualmente.
 
 ## Estrutura do repositório
 
 ```text
 .
 ├── front/                # Aplicação Next.js / Electron / Capacitor
+│   ├── Dockerfile        # Container nginx para deploy em produção
+│   ├── nginx.conf        # Configuração do nginx para servir arquivos estáticos
+│   └── ...
 ├── back/                 # API Express + Prisma
-├── docker-compose.yml    # PostgreSQL + backend em containers
+│   ├── Dockerfile        # Container Node.js multi-stage (pnpm)
+│   └── ...
+├── docker-compose.yml    # PostgreSQL + backend em containers (uso local)
 ├── .env.example          # Exemplo consolidado de variáveis
 └── README.md
 ```
 
-## Variáveis de ambiente
+---
 
-### 1) Arquivo raiz opcional
+## Desenvolvimento local
 
-Existe um `.env.example` na raiz com uma visão consolidada das variáveis do projeto. Você pode usá-lo como referência geral.
+### Requisitos
 
-### 2) Backend
+- **Node.js 22** ou compatível.
+- **pnpm** para gerenciar dependências.
+- **Docker + Docker Compose** para o PostgreSQL (ou PostgreSQL 16+ local).
 
-Copie o arquivo de exemplo do backend:
+### 1. Instalar dependências
+
+```bash
+cd front && pnpm install
+cd ../back && pnpm install
+```
+
+### 2. Configurar o banco de dados
+
+**Opção A — Docker (recomendado):**
+
+```bash
+docker compose up -d postgres
+```
+
+**Opção B — PostgreSQL local:**
+
+Crie um banco chamado `caixatotal` e ajuste a `DATABASE_URL` em `back/.env`.
+
+### 3. Configurar variáveis de ambiente
 
 ```bash
 cp back/.env.example back/.env
 ```
 
-Depois ajuste os valores conforme o seu ambiente:
+Ajuste os valores em `back/.env`:
 
 ```env
 DATABASE_URL=postgresql://caixa:caixa@localhost:5433/caixatotal
-PORT=4000
-JWT_SECRET=altere-em-producao-use-uma-chave-longa-e-segura
+JWT_SECRET=qualquer-chave-para-dev
 FRONT_URL=http://localhost:3000
 RESEND_API_KEY=
 RESEND_FROM=onboarding@resend.dev
@@ -114,59 +123,9 @@ SEED_SUPER_ADMIN_EMAIL=admin@example.com
 SEED_SUPER_ADMIN_PASSWORD=altere-me
 ```
 
-### 3) Frontend
+> `DATABASE_URL` e `JWT_SECRET` são **obrigatórias**. O backend falha ao iniciar se não estiverem definidas.
 
-O front usa principalmente esta variável:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:4000
-```
-
-Você pode exportá-la no shell antes de subir o front ou criar um arquivo `.env.local` dentro de `front/` com esse valor.
-
-### 4) Modo somente leitura para relatórios
-
-A tela de relatórios também pode operar em modo somente leitura via API quando `NEXT_PUBLIC_READ_ONLY=true` ou quando a rota recebe `?view=report`.
-
-## Fluxo de instalação local
-
-### 1. Instalar dependências
-
-Instale as dependências do front:
-
-```bash
-cd front
-pnpm install
-```
-
-Instale as dependências do back:
-
-```bash
-cd ../back
-pnpm install
-```
-
-## Configuração do banco de dados
-
-Você pode escolher entre **Docker** ou **PostgreSQL local**.
-
-### Opção A — Banco com Docker
-
-Na raiz do projeto:
-
-```bash
-docker compose up -d postgres
-```
-
-Isso sobe um PostgreSQL 16 com os padrões definidos no `docker-compose.yml`.
-
-### Opção B — Banco local sem Docker
-
-Crie um banco chamado `caixatotal` e ajuste a `DATABASE_URL` do arquivo `back/.env` apontando para a sua instância local.
-
-## Preparar o schema e seed
-
-Com o banco disponível e o `back/.env` configurado:
+### 4. Preparar o schema e seed
 
 ```bash
 cd back
@@ -175,173 +134,191 @@ pnpm db:push
 pnpm db:seed
 ```
 
-### O que cada comando faz
+### 5. Subir o projeto
 
-- `pnpm db:generate`: gera o client do Prisma.
-- `pnpm db:push`: cria/atualiza as tabelas conforme o schema atual.
-- `pnpm db:seed`: cria o primeiro usuário **SUPER_ADMIN**, caso ainda não exista.
-
-## Como rodar o projeto em desenvolvimento
-
-Você vai subir o backend e o frontend em terminais separados.
-
-### Terminal 1 — backend
+**Terminal 1 — backend:**
 
 ```bash
 cd back
 pnpm dev
 ```
 
-API padrão: `http://localhost:4000`
-
-### Terminal 2 — frontend
+**Terminal 2 — frontend:**
 
 ```bash
 cd front
 NEXT_PUBLIC_API_URL=http://localhost:4000 pnpm dev
 ```
 
-Front padrão: `http://localhost:3000`
+### 6. Primeiro acesso
 
-## Primeiro acesso
-
-Depois de executar a seed, faça login com o super admin configurado em `back/.env`.
-
-Exemplo padrão:
-
+- **URL**: `http://localhost:3000/login`
 - **E-mail**: `admin@example.com`
 - **Senha**: `altere-me`
 
-> Troque essas credenciais assim que iniciar o projeto em um ambiente real.
+> Troque essas credenciais ao usar em ambiente real.
 
-## Fluxo recomendado de uso
-
-### 1. Entrar no sistema
-
-- Acesse `/login`.
-- Faça login como **SUPER_ADMIN** ou **STORE_USER**.
-- O super admin é direcionado para `/admin`.
-- O usuário de loja é direcionado para `/caixa`.
-
-### 2. Configurar lojas e usuários
-
-Com um usuário **SUPER_ADMIN**:
-
-- crie uma ou mais lojas;
-- selecione uma loja;
-- cadastre os usuários dessa loja.
-
-### 3. Cadastrar produtos
-
-Na tela `/produtos`, cadastre os itens do estoque com:
-
-- nome;
-- categoria;
-- preço;
-- estoque;
-- SKU;
-- código de barras;
-- marca/modelo/tamanho/cor;
-- imagem e descrição, quando necessário.
-
-### 4. Operar o caixa
-
-Na tela `/caixa`, o operador pode:
-
-- buscar produtos por nome, SKU, marca, modelo, código de barras ou número de controle;
-- adicionar itens ao carrinho;
-- usar leitura de código de barras;
-- alterar quantidade;
-- finalizar a venda;
-- registrar pagamentos em dinheiro, crédito, débito ou fiado.
-
-Atalhos disponíveis no caixa:
-
-- `F2`: focar a busca;
-- `Enter`: adicionar item quando aplicável;
-- `F9`: finalizar venda;
-- `Esc`: limpar carrinho.
-
-### 5. Sincronizar dados
-
-Após operações como venda ou ajuste/cadastro de produto, o front pode sincronizar os dados locais com a API. Esse fluxo envia produtos, vendas, itens e logs de estoque para a loja associada ao usuário.
-
-### 6. Acompanhar relatórios
-
-Na tela `/relatorios`, você consegue visualizar:
-
-- receita total;
-- quantidade de vendas;
-- ticket médio;
-- total de itens vendidos;
-- gráfico por período;
-- ranking de produtos;
-- detalhamento das vendas.
-
-## Execução com Docker
-
-Se você quiser subir banco e backend via containers:
+### Execução com Docker Compose (banco + backend)
 
 ```bash
 docker compose up --build
 ```
 
-Esse fluxo:
+Sobe o PostgreSQL e o backend em containers. O frontend continua sendo executado localmente apontando para `http://localhost:4000`.
 
-- sobe o PostgreSQL;
-- builda o backend em `back/Dockerfile`;
-- executa `prisma migrate deploy` antes de iniciar a API.
+---
 
-> Nesse cenário, o frontend continua sendo executado localmente fora do Docker, apontando para `http://localhost:4000`.
+## Deploy em produção (Google Cloud)
 
-## Scripts úteis
+O projeto está configurado para deploy na nuvem usando **Cloud Run** (backend e frontend) e **Neon** (PostgreSQL serverless). Tudo dentro do free tier.
 
-### Back (`back/package.json`)
+### Infraestrutura
 
-```bash
-pnpm dev
-pnpm build
-pnpm start
-pnpm db:generate
-pnpm db:migrate
-pnpm db:push
-pnpm db:seed
-```
+| Serviço | Plataforma | Custo |
+|---------|-----------|-------|
+| Backend (API) | Google Cloud Run | $0 (free tier) |
+| Frontend (estático) | Google Cloud Run + nginx | $0 (free tier) |
+| Banco de dados | Neon PostgreSQL | $0 (free tier) |
+| Imagens Docker | Artifact Registry | $0 (500MB grátis) |
 
-### Front (`front/package.json`)
+### Pré-requisitos
 
-```bash
-pnpm dev
-pnpm build
-pnpm start
-pnpm lint
-pnpm electron
-pnpm build:desktop
-pnpm android:emulator
-pnpm android:device
-pnpm cap:sync
-```
+- Conta no [Google Cloud](https://console.cloud.google.com) com billing ativo.
+- Conta no [Neon](https://neon.tech) (free tier).
+- **gcloud CLI** e **Docker** instalados localmente.
 
-## Build para produção
+### 1. Configurar o banco no Neon
 
-### Backend
+1. Crie um projeto no Neon (região próxima ao Cloud Run, ex: `us-east-1`).
+2. Crie um database (ex: `caixa-total`).
+3. Copie a connection string.
+4. Rode as migrations e seed apontando para o Neon:
 
 ```bash
 cd back
-pnpm build
-pnpm start
+DATABASE_URL="postgresql://..." pnpm db:migrate
+DATABASE_URL="postgresql://..." pnpm db:seed
 ```
 
-### Front web
+### 2. Configurar o projeto GCP
+
+```bash
+gcloud auth login
+gcloud projects create SEU_PROJECT_ID --name="Caixa Total"
+gcloud config set project SEU_PROJECT_ID
+
+gcloud services enable \
+  run.googleapis.com \
+  artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com
+
+gcloud artifacts repositories create caixa-total \
+  --repository-format=docker \
+  --location=us-central1
+
+gcloud auth configure-docker us-central1-docker.pkg.dev
+```
+
+### 3. Deploy do backend
+
+```bash
+cd back
+
+docker build --platform linux/amd64 \
+  -t us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v1 .
+
+docker push us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v1
+
+gcloud run deploy caixa-total-back \
+  --image us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v1 \
+  --port 4000 \
+  --allow-unauthenticated \
+  --region us-central1 \
+  --memory 256Mi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 2 \
+  --set-env-vars "\
+DATABASE_URL=SUA_CONNECTION_STRING_NEON,\
+JWT_SECRET=$(openssl rand -base64 32),\
+FRONT_URL=*"
+```
+
+> Anote a URL retornada (ex: `https://caixa-total-back-xxx.us-central1.run.app`). Guarde o `JWT_SECRET` gerado.
+
+Teste:
+
+```bash
+curl https://URL_DO_BACKEND/health
+# {"status":"ok","db":"connected"}
+```
+
+### 4. Deploy do frontend
 
 ```bash
 cd front
-NEXT_PUBLIC_API_URL=http://localhost:4000 pnpm build
+
+NEXT_PUBLIC_API_URL=https://URL_DO_BACKEND pnpm build
+
+docker build --platform linux/amd64 \
+  -t us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v1 .
+
+docker push us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v1
+
+gcloud run deploy caixa-total-front \
+  --image us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v1 \
+  --port 8080 \
+  --allow-unauthenticated \
+  --region us-central1 \
+  --memory 128Mi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 2
 ```
 
-Esse build gera a saída estática em `front/out`. Como o projeto está com `output: "export"`, o deploy web ideal é servir esse diretório com um servidor estático ou uma hospedagem compatível com sites estáticos.
+### 5. Restringir CORS do backend
 
-> O script `pnpm start` existe no projeto, mas com `output: "export"` a estratégia principal de publicação tende a ser servir os arquivos exportados em `front/out`.
+Após obter a URL final do front, atualize o CORS:
+
+```bash
+gcloud run services update caixa-total-back \
+  --region us-central1 \
+  --update-env-vars "FRONT_URL=https://URL_DO_FRONTEND"
+```
+
+### Variáveis de ambiente em produção
+
+| Variável | Onde | Obrigatória | Descrição |
+|----------|------|:-----------:|-----------|
+| `DATABASE_URL` | Backend | Sim | Connection string do PostgreSQL (Neon) |
+| `JWT_SECRET` | Backend | Sim | Chave secreta para assinar tokens JWT |
+| `FRONT_URL` | Backend | Nao | Origens permitidas no CORS (separar por `,`). `*` libera tudo |
+| `RESEND_API_KEY` | Backend | Nao | Chave da API Resend para envio de e-mails |
+| `RESEND_FROM` | Backend | Nao | Remetente dos e-mails (padrão: `onboarding@resend.dev`) |
+| `NEXT_PUBLIC_API_URL` | Frontend | Sim (build time) | URL do backend, embutida no build estático |
+
+### Re-deploy (atualizações)
+
+Para atualizar o backend ou frontend após mudanças no código:
+
+```bash
+# Backend
+cd back
+docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v2 .
+docker push us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v2
+gcloud run deploy caixa-total-back --image us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v2 --region us-central1
+
+# Frontend
+cd front
+NEXT_PUBLIC_API_URL=https://URL_DO_BACKEND pnpm build
+docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v2 .
+docker push us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v2
+gcloud run deploy caixa-total-front --image us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v2 --region us-central1
+```
+
+> Incremente a tag (`v2`, `v3`, ...) a cada deploy para facilitar o rastreio.
+
+---
 
 ## Desktop com Electron
 
@@ -356,29 +333,94 @@ cd front
 pnpm electron
 ```
 
-### Execução após build web
+### Build para distribuição
 
 ```bash
 cd front
-pnpm build:desktop
+NEXT_PUBLIC_API_URL=https://URL_DO_BACKEND pnpm build
+pnpm electron
 ```
 
-Quando existe `front/out/index.html`, o Electron passa a carregar os arquivos estáticos gerados pelo build.
+Quando existe `front/out/index.html`, o Electron carrega os arquivos estáticos gerados pelo build.
+
+> Para gerar executáveis distribuíveis (`.exe`, `.AppImage`), adicione `electron-builder` ou `electron-packager` ao projeto.
 
 ## Android com Capacitor
-
-O projeto já possui configuração inicial de Capacitor.
 
 Fluxo básico:
 
 ```bash
 cd front
-pnpm build
+NEXT_PUBLIC_API_URL=https://URL_DO_BACKEND pnpm build
 pnpm cap:sync
 pnpm android:emulator
 ```
 
-> Para rodar no Android, você também precisa do Android Studio e do SDK devidamente configurados na máquina.
+> Requer Android Studio e SDK configurados na máquina.
+
+---
+
+## Fluxo recomendado de uso
+
+### 1. Entrar no sistema
+
+- Acesse `/login`.
+- **SUPER_ADMIN** é direcionado para `/admin`.
+- **STORE_USER** é direcionado para `/caixa`.
+
+### 2. Configurar lojas e usuários
+
+Com um **SUPER_ADMIN**: crie lojas, selecione uma loja e cadastre os usuários.
+
+### 3. Cadastrar produtos
+
+Na tela `/produtos`: nome, categoria, preço, estoque, SKU, código de barras, marca/modelo/tamanho/cor, imagem e descrição.
+
+### 4. Operar o caixa
+
+Na tela `/caixa`: buscar produtos, adicionar ao carrinho, leitura de código de barras, finalizar venda e registrar pagamentos.
+
+Atalhos: `F2` (busca), `Enter` (adicionar), `F9` (finalizar), `Esc` (limpar).
+
+### 5. Sincronizar dados
+
+Após operações de venda ou ajuste de produto, o front sincroniza os dados locais com a API.
+
+### 6. Acompanhar relatórios
+
+Na tela `/relatorios`: receita total, quantidade de vendas, ticket médio, gráfico por período, ranking de produtos e detalhamento.
+
+A tela de relatórios também pode operar em modo somente leitura via API quando `NEXT_PUBLIC_READ_ONLY=true` ou quando a rota recebe `?view=report`.
+
+---
+
+## Scripts úteis
+
+### Back (`back/package.json`)
+
+| Script | Descrição |
+|--------|-----------|
+| `pnpm dev` | Inicia o backend em modo desenvolvimento (hot reload) |
+| `pnpm build` | Compila TypeScript para `dist/` |
+| `pnpm start` | Inicia o backend compilado |
+| `pnpm db:generate` | Gera o Prisma Client |
+| `pnpm db:migrate` | Aplica migrations pendentes |
+| `pnpm db:push` | Sincroniza o schema com o banco (sem migration) |
+| `pnpm db:seed` | Cria o SUPER_ADMIN inicial |
+
+### Front (`front/package.json`)
+
+| Script | Descrição |
+|--------|-----------|
+| `pnpm dev` | Inicia o Next.js em desenvolvimento |
+| `pnpm build` | Gera o export estático em `out/` |
+| `pnpm lint` | Roda o ESLint |
+| `pnpm electron` | Abre o Electron apontando para dev ou build |
+| `pnpm build:desktop` | Build + Electron |
+| `pnpm cap:sync` | Sincroniza com o Capacitor |
+| `pnpm android:emulator` | Roda no emulador Android |
+
+---
 
 ## Endpoints principais da API
 
@@ -415,86 +457,49 @@ pnpm android:emulator
 - `GET /report/sales`
 - `GET /report/top-products`
 
+---
+
 ## Modelo de dados resumido
 
-As entidades principais do banco são:
+Entidades: `Store`, `User`, `PasswordResetToken`, `Product`, `Sale`, `SaleItem`, `SalePayment`, `StockLog`.
 
-- `Store`
-- `User`
-- `PasswordResetToken`
-- `Product`
-- `Sale`
-- `SaleItem`
-- `SalePayment`
-- `StockLog`
+Enums:
 
-Também existem enums para:
+- Categorias: `roupas`, `tenis`, `controles`, `eletronicos`, `diversos`
+- Pagamentos: `dinheiro`, `credito`, `debito`, `fiado`
+- Perfis: `SUPER_ADMIN`, `STORE_USER`
 
-- categorias de produto: `roupas`, `tenis`, `controles`, `eletronicos`, `diversos`;
-- métodos de pagamento: `dinheiro`, `credito`, `debito`, `fiado`;
-- perfis de usuário: `SUPER_ADMIN`, `STORE_USER`.
+---
 
 ## Solução de problemas
 
 ### O front não consegue acessar a API
 
-Verifique:
-
-- se o backend está em execução;
-- se `NEXT_PUBLIC_API_URL` aponta para `http://localhost:4000` ou para a URL correta;
-- se a porta `4000` está liberada.
+- Backend em execução?
+- `NEXT_PUBLIC_API_URL` correto?
+- Porta `4000` liberada?
+- Em produção: `FRONT_URL` no backend inclui a URL do front?
 
 ### Erro no login
 
-Verifique:
-
-- se o seed foi executado;
-- se o usuário existe no banco;
-- se `JWT_SECRET` está definido;
-- se o backend está usando o `.env` correto.
+- Seed foi executado?
+- `JWT_SECRET` definido?
+- Backend usando o `.env` correto?
 
 ### E-mail de recuperação não funciona
 
-Sem `RESEND_API_KEY`, o backend não envia o e-mail de fato e apenas registra o link de redefinição no log do servidor.
+Sem `RESEND_API_KEY`, o backend registra o link de redefinição apenas no log do servidor.
 
 ### Problemas com banco de dados
 
-Teste o endpoint de saúde:
-
 ```bash
 curl http://localhost:4000/health
+# ou em produção:
+curl https://URL_DO_BACKEND/health
 ```
 
-Se tudo estiver correto, a resposta deve indicar `status: ok` e `db: connected`.
+Resposta esperada: `{"status":"ok","db":"connected"}`.
 
-## Resumo rápido do fluxo de subida
+### Backend não inicia
 
-```bash
-# 1) Banco
-cd /workspace/caixa_total
-docker compose up -d postgres
-
-# 2) Backend
-cp back/.env.example back/.env
-cd back
-pnpm install
-pnpm db:generate
-pnpm db:push
-pnpm db:seed
-pnpm dev
-
-# 3) Frontend
-cd ../front
-pnpm install
-NEXT_PUBLIC_API_URL=http://localhost:4000 pnpm dev
-```
-
-Depois disso:
-
-- front em `http://localhost:3000`
-- back em `http://localhost:4000`
-- login com o super admin definido no seed
-
----
-
-Se quiser, no próximo passo eu também posso transformar este README em uma versão mais curta e comercial, ou em uma versão mais técnica para deploy em produção.
+Verifique se `DATABASE_URL` e `JWT_SECRET` estão definidas. O backend exige essas variáveis e falha imediatamente se estiverem ausentes.
