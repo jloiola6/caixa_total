@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback, Fragment } from "react"
+import { Suspense, useState, useEffect, useMemo, useCallback, Fragment } from "react"
 import { useSearchParams } from "next/navigation"
 import { format, subDays, startOfDay, endOfDay } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -60,6 +60,14 @@ import type { Sale, SaleItem, PaymentMethod } from "@/lib/types"
 const READ_ONLY_VIEW = "report"
 
 export default function RelatoriosPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Carregando...</div>}>
+      <RelatoriosContent />
+    </Suspense>
+  )
+}
+
+function RelatoriosContent() {
   const searchParams = useSearchParams()
   const readOnly =
     searchParams.get("view") === READ_ONLY_VIEW ||

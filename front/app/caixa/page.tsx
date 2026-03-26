@@ -279,7 +279,7 @@ export default function CaixaPage() {
               variant="outline"
               size="icon"
               onClick={() => setScannerOpen(true)}
-              title="Escanear codigo de barras"
+              title="Escanear código de barras"
             >
               <Camera className="size-4" />
             </Button>
@@ -291,7 +291,7 @@ export default function CaixaPage() {
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2">
                 <Search className="size-10 opacity-30" />
                 <p className="text-sm">
-                  Digite o nome, SKU ou codigo de barras para buscar
+                  Digite o nome, SKU ou código de barras para buscar
                 </p>
               </div>
             ) : searchResults.length === 0 ? (

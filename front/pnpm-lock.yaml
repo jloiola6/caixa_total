@@ -122,6 +122,9 @@ importers:
       input-otp:
         specifier: 1.4.2
         version: 1.4.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      jsbarcode:
+        specifier: ^3.12.3
+        version: 3.12.3
       lucide-react:
         specifier: ^0.564.0
         version: 0.564.0(react@19.2.4)
@@ -1771,6 +1774,9 @@ packages:
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
+
+  jsbarcode@3.12.3:
+    resolution: {integrity: sha512-CuHU9hC6dPsHF5oVFMo8NW76uQVjH4L22CsP4hW+dNnGywJHC/B0ThA1CTDVLnxKLrrpYdicBLnd2xsgTfRnvg==}
 
   json-buffer@3.0.1:
     resolution: {integrity: sha512-4bV5BfR2mqfQTJm+V5tPPdf+ZpuhiIvTuAB5g8kcrXOZpTT/QwwVRWBywX1ozr6lEuPdbHxwaJlm9G6mI2sfSQ==}
@@ -3942,6 +3948,8 @@ snapshots:
   jiti@2.6.1: {}
 
   js-tokens@4.0.0: {}
+
+  jsbarcode@3.12.3: {}
 
   json-buffer@3.0.1: {}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { resetPassword } from "@/lib/auth-api";
@@ -11,6 +11,14 @@ import { Label } from "@/components/ui/label";
 import { ShoppingCart } from "lucide-react";
 
 export default function RedefinirSenhaPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Carregando...</div>}>
+      <RedefinirSenhaContent />
+    </Suspense>
+  );
+}
+
+function RedefinirSenhaContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");

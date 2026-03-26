@@ -21,12 +21,54 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { CurrencyInput } from "@/components/currency-input"
-import { upsertProduct } from "@/lib/db"
+import { upsertProduct, getAllBarcodes } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
-import { ImagePlus, X } from "lucide-react"
+import { ImagePlus, X, Shuffle, Printer } from "lucide-react"
 import { toast } from "sonner"
+import JsBarcode from "jsbarcode"
+
+function generateEAN13(existingBarcodes: Set<string>): string {
+  const maxAttempts = 1000
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const prefix = 20 + Math.floor(Math.random() * 10)
+    let digits = prefix.toString()
+    for (let i = 0; i < 10; i++) {
+      digits += Math.floor(Math.random() * 10).toString()
+    }
+
+    let sum = 0
+    for (let i = 0; i < 12; i++) {
+      sum += parseInt(digits[i]) * (i % 2 === 0 ? 1 : 3)
+    }
+    const checkDigit = (10 - (sum % 10)) % 10
+    const ean = digits + checkDigit.toString()
+
+    if (!existingBarcodes.has(ean)) return ean
+  }
+  throw new Error("Não foi possível gerar um código de barras único")
+}
+
+function renderBarcodeSvg(value: string): string | null {
+  if (!value) return null
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  const opts = { width: 2, height: 80, displayValue: true, fontSize: 14, margin: 10 }
+
+  try {
+    JsBarcode(svg, value, { ...opts, format: "EAN13" })
+    return new XMLSerializer().serializeToString(svg)
+  } catch {
+    // Fallback: CODE128 aceita qualquer string
+  }
+
+  try {
+    JsBarcode(svg, value, { ...opts, format: "CODE128" })
+    return new XMLSerializer().serializeToString(svg)
+  } catch {
+    return null
+  }
+}
 
 interface ProductFormDialogProps {
   open: boolean
@@ -57,6 +99,7 @@ export function ProductFormDialog({
   const [color, setColor] = useState("")
   const [description, setDescription] = useState("")
   const [controlNumber, setControlNumber] = useState("")
+  const [barcodeSvg, setBarcodeSvg] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isEditing = !!product
@@ -77,6 +120,7 @@ export function ProductFormDialog({
       setColor(product.color || "")
       setDescription(product.description || "")
       setControlNumber(product.controlNumber || "")
+      setBarcodeSvg(product.barcode ? renderBarcodeSvg(product.barcode) : null)
     } else {
       setName("")
       setSku("")
@@ -92,8 +136,50 @@ export function ProductFormDialog({
       setColor("")
       setDescription("")
       setControlNumber("")
+      setBarcodeSvg(null)
     }
   }, [product, open])
+
+  function handleGenerateBarcode() {
+    try {
+      const existing = getAllBarcodes()
+      if (product?.barcode) existing.delete(product.barcode)
+      const newBarcode = generateEAN13(existing)
+      setBarcode(newBarcode)
+      setBarcodeSvg(renderBarcodeSvg(newBarcode))
+      toast.success("Código de barras gerado")
+    } catch {
+      toast.error("Erro ao gerar código de barras")
+    }
+  }
+
+  function handlePrintBarcode() {
+    if (!barcodeSvg) return
+    const printWindow = window.open("", "_blank", "width=400,height=300")
+    if (!printWindow) {
+      toast.error("Não foi possível abrir a janela de impressão")
+      return
+    }
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Código de Barras - ${name || "Produto"}</title>
+          <style>
+            body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; font-family: sans-serif; }
+            .product-name { font-size: 14px; margin-bottom: 8px; font-weight: 600; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          ${name ? `<div class="product-name">${name}</div>` : ""}
+          ${barcodeSvg}
+          <script>window.onload = function() { window.print(); window.close(); }</script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
 
   function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -170,7 +256,6 @@ export function ProductFormDialog({
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {/* Photo */}
           <div className="flex flex-col gap-2">
-            <Label>Foto (opcional)</Label>
             <div className="flex items-center gap-4">
               {imageUrl ? (
                 <div className="relative size-20 rounded-lg border border-border overflow-hidden bg-muted shrink-0">
@@ -215,6 +300,18 @@ export function ProductFormDialog({
                 className="hidden"
                 onChange={handleImageUpload}
               />
+
+              {/* Name */}
+              <div className="flex flex-col gap-2 w-full">
+                <Label htmlFor="prod-name">Nome *</Label>
+                <Input
+                  id="prod-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nome do produto"
+                  autoFocus
+                />
+              </div>
             </div>
           </div>
 
@@ -233,18 +330,6 @@ export function ProductFormDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          {/* Name */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="prod-name">Nome *</Label>
-            <Input
-              id="prod-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nome do produto"
-              autoFocus
-            />
           </div>
 
           {/* Brand + Model */}
@@ -330,26 +415,50 @@ export function ProductFormDialog({
             </div>
           )}
 
-          {/* SKU + Barcode */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="prod-sku">SKU</Label>
-              <Input
-                id="prod-sku"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                placeholder="Ex: CC350"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="prod-barcode">Codigo de Barras</Label>
+          {/* Barcode */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="prod-barcode">Código de Barras</Label>
+            <div className="flex items-center gap-2">
               <Input
                 id="prod-barcode"
                 value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setBarcode(val)
+                  setBarcodeSvg(val.length >= 4 ? renderBarcodeSvg(val) : null)
+                }}
                 placeholder="Ex: 7891000..."
+                className="flex-1"
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleGenerateBarcode}
+                title="Gerar código aleatório"
+              >
+                <Shuffle className="size-4" />
+              </Button>
             </div>
+
+            {barcodeSvg && (
+              <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-white p-3">
+                <div
+                  dangerouslySetInnerHTML={{ __html: barcodeSvg }}
+                  className="[&>svg]:max-w-full [&>svg]:h-auto"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrintBarcode}
+                  className="gap-1.5"
+                >
+                  <Printer className="size-3.5" />
+                  Imprimir
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Prices */}

@@ -5,14 +5,11 @@ import crypto from "crypto";
 import { prisma } from "../db.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { Resend } from "resend";
+import { config } from "../config.js";
 
 export const authRouter = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "change-me-in-production";
-const FRONT_URL = process.env.FRONT_URL ?? "http://localhost:3000";
-const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
-const RESEND_FROM = process.env.RESEND_FROM ?? "onboarding@resend.dev";
-const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+const resend = config.resendApiKey ? new Resend(config.resendApiKey) : null;
 
 const SALT_ROUNDS = 10;
 const TOKEN_EXPIRY_HOURS = 1;
@@ -43,7 +40,7 @@ authRouter.post("/login", async (req, res) => {
       role: user.role,
       storeId: user.storeId,
     };
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign(payload, config.jwtSecret, { expiresIn: "7d" });
     res.status(200).json({
       token,
       user: {
@@ -78,10 +75,10 @@ authRouter.post("/forgot-password", async (req, res) => {
       await prisma.passwordResetToken.create({
         data: { userId: user.id, token, expiresAt },
       });
-      const resetLink = `${FRONT_URL.replace(/\/$/, "")}/redefinir-senha?token=${token}`;
+      const resetLink = `${config.frontUrl.replace(/\/$/, "")}/redefinir-senha?token=${token}`;
       if (resend) {
         await resend.emails.send({
-          from: RESEND_FROM,
+          from: config.resendFrom,
           to: user.email,
           subject: "Redefinir senha - CaixaTotal",
           html: `<p>Clique no link para redefinir sua senha:</p><p><a href="${resetLink}">${resetLink}</a></p><p>O link expira em ${TOKEN_EXPIRY_HOURS} hora(s).</p>`,

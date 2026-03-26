@@ -88,6 +88,14 @@ export function getProductByBarcode(barcode: string): Product | undefined {
   )
 }
 
+export function getAllBarcodes(): Set<string> {
+  return new Set(
+    read<Product>(getProductsKey())
+      .map((p) => p.barcode)
+      .filter((b): b is string => b !== null && b !== "")
+  )
+}
+
 export function upsertProduct(product: Partial<Product> & { name: string; priceCents: number; category: Product["category"] }): Product {
   const products = read<Product>(getProductsKey())
   const now = new Date().toISOString()

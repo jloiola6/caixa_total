@@ -1,8 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import type { UserRole } from "@prisma/client";
-
-const JWT_SECRET = process.env.JWT_SECRET ?? "change-me-in-production";
+import { config } from "../config.js";
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -12,7 +11,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     return;
   }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as {
+    const decoded = jwt.verify(token, config.jwtSecret) as {
       userId: string;
       email: string;
       role: UserRole;

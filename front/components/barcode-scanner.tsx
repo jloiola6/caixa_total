@@ -90,9 +90,9 @@ export function BarcodeScanner({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Escanear Codigo de Barras</DialogTitle>
+          <DialogTitle>Escanear Código de Barras</DialogTitle>
           <DialogDescription>
-            Aponte a camera para o codigo de barras do produto.
+            Aponte a camera para o código de barras do produto.
           </DialogDescription>
         </DialogHeader>
 

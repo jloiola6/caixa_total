@@ -104,7 +104,7 @@ cp back/.env.example back/.env
 Depois ajuste os valores conforme o seu ambiente:
 
 ```env
-DATABASE_URL=postgresql://caixa:caixa@localhost:5432/caixatotal
+DATABASE_URL=postgresql://caixa:caixa@localhost:5433/caixatotal
 PORT=4000
 JWT_SECRET=altere-em-producao-use-uma-chave-longa-e-segura
 FRONT_URL=http://localhost:3000

@@ -1,0 +1,66 @@
+[debug] [2026-03-25T18:06:24.571Z] ----------------------------------------------------------------------
+[debug] [2026-03-25T18:06:24.573Z] Command:       /home/joao-teixeira/.nvm/versions/node/v24.13.0/bin/node /home/joao-teixeira/.nvm/versions/node/v24.13.0/bin/firebase projects:addfirebase caixa-total
+[debug] [2026-03-25T18:06:24.574Z] CLI Version:   15.11.0
+[debug] [2026-03-25T18:06:24.574Z] Platform:      linux
+[debug] [2026-03-25T18:06:24.574Z] Node Version:  v24.13.0
+[debug] [2026-03-25T18:06:24.574Z] Time:          Wed Mar 25 2026 15:06:24 GMT-0300 (Horário Padrão de Brasília)
+[debug] [2026-03-25T18:06:24.574Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-03-25T18:06:24.580Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-03-25T18:06:24.581Z] > authorizing via signed-in user (administrativo@riosoftwares.com)
+[debug] [2026-03-25T18:06:24.585Z] Checked if tokens are valid: true, expires at: 1774465557147
+[debug] [2026-03-25T18:06:24.585Z] Checked if tokens are valid: true, expires at: 1774465557147
+[debug] [2026-03-25T18:06:24.586Z] >>> [apiv2][query] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase [none]
+[debug] [2026-03-25T18:06:25.480Z] <<< [apiv2][status] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase 403
+[debug] [2026-03-25T18:06:25.480Z] <<< [apiv2][body] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase {"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}
+[debug] [2026-03-25T18:06:25.482Z] Request to https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase had HTTP Error: 403, The caller does not have permission
+[debug] [2026-03-25T18:06:25.906Z] FirebaseError: Request to https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase had HTTP Error: 403, The caller does not have permission
+    at responseToError (/home/joao-teixeira/.nvm/versions/node/v24.13.0/lib/node_modules/firebase-tools/lib/responseToError.js:53:12)
+    at RetryOperation._fn (/home/joao-teixeira/.nvm/versions/node/v24.13.0/lib/node_modules/firebase-tools/lib/apiv2.js:333:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[error] 
+[error] Error: Failed to add Firebase to Google Cloud Platform project. See firebase-debug.log for more info.
+[debug] [2026-03-25T18:06:59.675Z] ----------------------------------------------------------------------
+[debug] [2026-03-25T18:06:59.677Z] Command:       /home/joao-teixeira/.nvm/versions/node/v24.13.0/bin/node /home/joao-teixeira/.nvm/versions/node/v24.13.0/bin/firebase projects:addfirebase caixa-total
+[debug] [2026-03-25T18:06:59.678Z] CLI Version:   15.11.0
+[debug] [2026-03-25T18:06:59.678Z] Platform:      linux
+[debug] [2026-03-25T18:06:59.678Z] Node Version:  v24.13.0
+[debug] [2026-03-25T18:06:59.678Z] Time:          Wed Mar 25 2026 15:06:59 GMT-0300 (Horário Padrão de Brasília)
+[debug] [2026-03-25T18:06:59.678Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-03-25T18:06:59.684Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-03-25T18:06:59.684Z] > authorizing via signed-in user (administrativo@riosoftwares.com)
+[debug] [2026-03-25T18:06:59.688Z] Checked if tokens are valid: true, expires at: 1774465557147
+[debug] [2026-03-25T18:06:59.688Z] Checked if tokens are valid: true, expires at: 1774465557147
+[debug] [2026-03-25T18:06:59.689Z] >>> [apiv2][query] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase [none]
+[debug] [2026-03-25T18:07:00.399Z] <<< [apiv2][status] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase 403
+[debug] [2026-03-25T18:07:00.400Z] <<< [apiv2][body] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase {"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}
+[debug] [2026-03-25T18:07:00.402Z] Request to https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase had HTTP Error: 403, The caller does not have permission
+[debug] [2026-03-25T18:07:00.847Z] FirebaseError: Request to https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase had HTTP Error: 403, The caller does not have permission
+    at responseToError (/home/joao-teixeira/.nvm/versions/node/v24.13.0/lib/node_modules/firebase-tools/lib/responseToError.js:53:12)
+    at RetryOperation._fn (/home/joao-teixeira/.nvm/versions/node/v24.13.0/lib/node_modules/firebase-tools/lib/apiv2.js:333:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[error] 
+[error] Error: Failed to add Firebase to Google Cloud Platform project. See firebase-debug.log for more info.
+[debug] [2026-03-25T18:07:27.122Z] ----------------------------------------------------------------------
+[debug] [2026-03-25T18:07:27.124Z] Command:       /home/joao-teixeira/.nvm/versions/node/v24.13.0/bin/node /home/joao-teixeira/.nvm/versions/node/v24.13.0/bin/firebase projects:addfirebase caixa-total
+[debug] [2026-03-25T18:07:27.124Z] CLI Version:   15.11.0
+[debug] [2026-03-25T18:07:27.125Z] Platform:      linux
+[debug] [2026-03-25T18:07:27.125Z] Node Version:  v24.13.0
+[debug] [2026-03-25T18:07:27.125Z] Time:          Wed Mar 25 2026 15:07:27 GMT-0300 (Horário Padrão de Brasília)
+[debug] [2026-03-25T18:07:27.125Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-03-25T18:07:27.130Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-03-25T18:07:27.131Z] > authorizing via signed-in user (administrativo@riosoftwares.com)
+[debug] [2026-03-25T18:07:27.135Z] Checked if tokens are valid: true, expires at: 1774465557147
+[debug] [2026-03-25T18:07:27.135Z] Checked if tokens are valid: true, expires at: 1774465557147
+[debug] [2026-03-25T18:07:27.136Z] >>> [apiv2][query] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase [none]
+[debug] [2026-03-25T18:07:28.134Z] <<< [apiv2][status] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase 403
+[debug] [2026-03-25T18:07:28.134Z] <<< [apiv2][body] POST https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase {"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}
+[debug] [2026-03-25T18:07:28.137Z] Request to https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase had HTTP Error: 403, The caller does not have permission
+[debug] [2026-03-25T18:07:28.767Z] FirebaseError: Request to https://firebase.googleapis.com/v1beta1/projects/caixa-total:addFirebase had HTTP Error: 403, The caller does not have permission
+    at responseToError (/home/joao-teixeira/.nvm/versions/node/v24.13.0/lib/node_modules/firebase-tools/lib/responseToError.js:53:12)
+    at RetryOperation._fn (/home/joao-teixeira/.nvm/versions/node/v24.13.0/lib/node_modules/firebase-tools/lib/apiv2.js:333:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[error] 
+[error] Error: Failed to add Firebase to Google Cloud Platform project. See firebase-debug.log for more info.
