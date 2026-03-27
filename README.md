@@ -38,6 +38,16 @@ A API usa **Express** com **Prisma** sobre **PostgreSQL**. O backend inclui:
 - **validação de env vars obrigatórias** no boot (`DATABASE_URL` e `JWT_SECRET` são exigidas);
 - rotas de saúde, autenticação, administração, sincronização e relatórios.
 
+### Dados no navegador (sync server-first)
+
+O front combina **API** e **`localStorage`**:
+
+- Após **login** ou ao **abrir o app já autenticado**, é executado `pullFromServer()` (`front/lib/sync-pull.ts`), que chama `GET /sync` e grava produtos, vendas, itens, pagamentos e logs de estoque no `localStorage`.
+- Se a rede falhar, mantém-se o que já existir localmente (modo offline).
+- A página de **relatórios** tenta **sempre** as rotas `GET /report/*` primeiro; em falha de rede, usa os dados locais.
+
+Assim, o mesmo usuário vê dados consistentes entre dispositivos quando há conexão com a API.
+
 ## Stack utilizada
 
 ### Front
@@ -71,6 +81,9 @@ A API usa **Express** com **Prisma** sobre **PostgreSQL**. O backend inclui:
 ├── back/                 # API Express + Prisma
 │   ├── Dockerfile        # Container Node.js multi-stage (pnpm)
 │   └── ...
+├── .github/workflows/    # CI/CD: deploy no Cloud Run ao push de tags
+├── docs/
+│   └── DEPLOY-PRODUCAO.md  # Guia detalhado: prod, variáveis, API, pipelines
 ├── docker-compose.yml    # PostgreSQL + backend em containers (uso local)
 ├── .env.example          # Exemplo consolidado de variáveis
 └── README.md
@@ -171,6 +184,24 @@ Sobe o PostgreSQL e o backend em containers. O frontend continua sendo executado
 ## Deploy em produção (Google Cloud)
 
 O projeto está configurado para deploy na nuvem usando **Cloud Run** (backend e frontend) e **Neon** (PostgreSQL serverless). Tudo dentro do free tier.
+
+**Documentação completa (tags, secrets, schemas de API, checklist, troubleshooting):** [docs/DEPLOY-PRODUCAO.md](docs/DEPLOY-PRODUCAO.md).
+
+### Atualização contínua (recomendado) — GitHub Actions
+
+Com os secrets configurados no GitHub (`GCP_PROJECT_ID`, `GCP_SA_KEY`, `BACKEND_URL`), o deploy em produção é disparado por **push de tag**:
+
+| Tag | O que publica |
+|-----|----------------|
+| `back-v1.0.1` | Backend → imagem `back:1.0.1` + deploy `caixa-total-back` |
+| `front-v1.0.1` | Frontend → build com `NEXT_PUBLIC_API_URL` + imagem `front:1.0.1` + deploy `caixa-total-front` |
+
+```bash
+git tag back-v1.0.2
+git push origin back-v1.0.2
+```
+
+O workflow **não altera** variáveis sensíveis do Cloud Run (`DATABASE_URL`, `JWT_SECRET`, etc.); apenas atualiza a **imagem**. Ajuste essas variáveis no console do GCP ou com `gcloud run services update` quando necessário.
 
 ### Infraestrutura
 
@@ -299,24 +330,9 @@ gcloud run services update caixa-total-back \
 
 ### Re-deploy (atualizações)
 
-Para atualizar o backend ou frontend após mudanças no código:
+**Preferência:** use as tags `back-v*` e `front-v*` e o pipeline do GitHub Actions (ver tabela acima e [docs/DEPLOY-PRODUCAO.md](docs/DEPLOY-PRODUCAO.md)).
 
-```bash
-# Backend
-cd back
-docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v2 .
-docker push us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v2
-gcloud run deploy caixa-total-back --image us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/back:v2 --region us-central1
-
-# Frontend
-cd front
-NEXT_PUBLIC_API_URL=https://URL_DO_BACKEND pnpm build
-docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v2 .
-docker push us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v2
-gcloud run deploy caixa-total-front --image us-central1-docker.pkg.dev/SEU_PROJECT_ID/caixa-total/front:v2 --region us-central1
-```
-
-> Incremente a tag (`v2`, `v3`, ...) a cada deploy para facilitar o rastreio.
+**Manual (fallback):** build local da imagem, push para o Artifact Registry e `gcloud run deploy` com a nova tag de imagem — mesmo fluxo das seções 3 e 4 deste README, incrementando a versão (`v2`, `v3`, …).
 
 ---
 
@@ -390,7 +406,7 @@ Após operações de venda ou ajuste de produto, o front sincroniza os dados loc
 
 Na tela `/relatorios`: receita total, quantidade de vendas, ticket médio, gráfico por período, ranking de produtos e detalhamento.
 
-A tela de relatórios também pode operar em modo somente leitura via API quando `NEXT_PUBLIC_READ_ONLY=true` ou quando a rota recebe `?view=report`.
+Os dados vêm **da API quando há conexão**; sem rede, a tela usa o que estiver no `localStorage`. O modo somente leitura (`NEXT_PUBLIC_READ_ONLY=true` ou `?view=report`) continua disponível para cenários específicos de visualização.
 
 ---
 
@@ -499,6 +515,10 @@ curl https://URL_DO_BACKEND/health
 ```
 
 Resposta esperada: `{"status":"ok","db":"connected"}`.
+
+### Produtos ou relatórios diferentes entre computadores
+
+Confirme CORS (`FRONT_URL` no backend), `NEXT_PUBLIC_API_URL` / secret `BACKEND_URL` no build do front, e se `GET /sync` e `GET /report/*` retornam 200 com o token do usuário. Ver [docs/DEPLOY-PRODUCAO.md](docs/DEPLOY-PRODUCAO.md) (sync e contratos da API).
 
 ### Backend não inicia
 
