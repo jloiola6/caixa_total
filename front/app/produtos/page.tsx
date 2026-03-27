@@ -272,8 +272,7 @@ export default function ProdutosPage() {
             disabled={selectedProducts.length === 0}
             onClick={() => setBulkPriceOpen(true)}
           >
-            <Percent className="size-4" />
-            Preco em massa
+            Preço em massa
             {selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ""}
           </Button>
           <Button
