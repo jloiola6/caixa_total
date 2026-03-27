@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Plus, Search, Pencil, PackageMinus, Trash2, Filter } from "lucide-react"
+import { useState, useEffect, useCallback, useMemo } from "react"
+import { Plus, Search, Pencil, PackageMinus, Trash2, Filter, Percent } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -33,7 +33,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ProductFormDialog } from "@/components/product-form-dialog"
 import { StockAdjustDialog } from "@/components/stock-adjust-dialog"
-import { getProducts, deleteProduct } from "@/lib/db"
+import { BulkPriceDialog } from "@/components/bulk-price-dialog"
+import { Checkbox } from "@/components/ui/checkbox"
+import { getProducts, deleteProduct, getProductById } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
 import { formatCurrency } from "@/lib/format"
 import type { Product, ProductCategory } from "@/lib/types"
@@ -84,7 +86,44 @@ export default function ProdutosPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [stockProduct, setStockProduct] = useState<Product | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [bulkPriceOpen, setBulkPriceOpen] = useState(false)
   const isMobile = useIsMobile()
+
+  const selectedProducts = useMemo(() => {
+    return Array.from(selectedIds)
+      .map((id) => getProductById(id))
+      .filter((p): p is Product => p !== undefined)
+  }, [selectedIds])
+
+  const allVisibleSelected =
+    products.length > 0 && products.every((p) => selectedIds.has(p.id))
+  const someVisibleSelected = products.some((p) => selectedIds.has(p.id))
+
+  function toggleSelectId(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  function toggleSelectAllVisible(checked: boolean) {
+    if (checked) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        for (const p of products) next.add(p.id)
+        return next
+      })
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        for (const p of products) next.delete(p.id)
+        return next
+      })
+    }
+  }
 
   const loadProducts = useCallback(() => {
     let prods = getProducts(query)
@@ -147,10 +186,23 @@ export default function ProdutosPage() {
             {products.length} produto(s) encontrado(s)
           </p>
         </div>
-        <Button onClick={handleNew} className="gap-2">
-          <Plus className="size-4" />
-          Novo Produto
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            disabled={selectedProducts.length === 0}
+            onClick={() => setBulkPriceOpen(true)}
+          >
+            <Percent className="size-4" />
+            Preco em massa
+            {selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ""}
+          </Button>
+          <Button onClick={handleNew} className="gap-2">
+            <Plus className="size-4" />
+            Novo Produto
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -188,6 +240,19 @@ export default function ProdutosPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10 px-2">
+                  <Checkbox
+                    checked={
+                      allVisibleSelected
+                        ? true
+                        : someVisibleSelected
+                          ? "indeterminate"
+                          : false
+                    }
+                    onCheckedChange={(v) => toggleSelectAllVisible(v === true)}
+                    aria-label="Selecionar todos da lista"
+                  />
+                </TableHead>
                 <TableHead className="w-12"></TableHead>
                 <TableHead>Produto</TableHead>
                 <TableHead>Categoria</TableHead>
@@ -201,7 +266,7 @@ export default function ProdutosPage() {
               {products.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="text-center text-muted-foreground py-8"
                   >
                     Nenhum produto encontrado
@@ -212,6 +277,15 @@ export default function ProdutosPage() {
                   const subtitle = productSubtitle(product)
                   return (
                     <TableRow key={product.id}>
+                      <TableCell className="w-10 px-2">
+                        <Checkbox
+                          checked={selectedIds.has(product.id)}
+                          onCheckedChange={(v) =>
+                            toggleSelectId(product.id, v === true)
+                          }
+                          aria-label={`Selecionar ${product.name}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <ProductImage src={product.imageUrl} name={product.name} />
                       </TableCell>
@@ -296,6 +370,14 @@ export default function ProdutosPage() {
                 <Card key={product.id}>
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
+                      <Checkbox
+                        className="mt-2"
+                        checked={selectedIds.has(product.id)}
+                        onCheckedChange={(v) =>
+                          toggleSelectId(product.id, v === true)
+                        }
+                        aria-label={`Selecionar ${product.name}`}
+                      />
                       <ProductImage src={product.imageUrl} name={product.name} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -374,6 +456,16 @@ export default function ProdutosPage() {
         onOpenChange={(open) => !open && setStockProduct(null)}
         product={stockProduct}
         onAdjusted={loadProducts}
+      />
+
+      <BulkPriceDialog
+        open={bulkPriceOpen}
+        onOpenChange={setBulkPriceOpen}
+        products={selectedProducts}
+        onApplied={() => {
+          loadProducts()
+          setSelectedIds(new Set())
+        }}
       />
 
       <AlertDialog

@@ -2,7 +2,12 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { Input } from "@/components/ui/input"
-import { formatCurrencyInput, parseCurrencyInput } from "@/lib/format"
+import {
+  formatCurrencyInput,
+  parseCurrencyInput,
+  formatSignedCurrencyInput,
+  parseSignedCurrencyInput,
+} from "@/lib/format"
 
 interface CurrencyInputProps {
   value: number // cents
@@ -11,6 +16,8 @@ interface CurrencyInputProps {
   placeholder?: string
   className?: string
   disabled?: boolean
+  /** Permite valores negativos (ex.: subtrair reais em lote). */
+  allowNegative?: boolean
 }
 
 export function CurrencyInput({
@@ -20,21 +27,31 @@ export function CurrencyInput({
   placeholder = "0,00",
   className,
   disabled,
+  allowNegative = false,
 }: CurrencyInputProps) {
-  const [display, setDisplay] = useState(formatCurrencyInput(value))
+  const [display, setDisplay] = useState(() =>
+    allowNegative ? formatSignedCurrencyInput(value) : formatCurrencyInput(value)
+  )
 
   useEffect(() => {
-    setDisplay(formatCurrencyInput(value))
-  }, [value])
+    setDisplay(
+      allowNegative ? formatSignedCurrencyInput(value) : formatCurrencyInput(value)
+    )
+  }, [value, allowNegative])
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const raw = e.target.value
-      const cents = parseCurrencyInput(raw)
-      setDisplay(formatCurrencyInput(cents))
+      if (allowNegative && (raw === "-" || raw === "- ")) {
+        setDisplay("-")
+        onChange(0)
+        return
+      }
+      const cents = allowNegative ? parseSignedCurrencyInput(raw) : parseCurrencyInput(raw)
+      setDisplay(allowNegative ? formatSignedCurrencyInput(cents) : formatCurrencyInput(cents))
       onChange(cents)
     },
-    [onChange]
+    [allowNegative, onChange]
   )
 
   const handleFocus = useCallback(() => {
@@ -42,8 +59,10 @@ export function CurrencyInput({
   }, [value])
 
   const handleBlur = useCallback(() => {
-    setDisplay(formatCurrencyInput(value))
-  }, [value])
+    setDisplay(
+      allowNegative ? formatSignedCurrencyInput(value) : formatCurrencyInput(value)
+    )
+  }, [value, allowNegative])
 
   return (
     <div className="relative">
