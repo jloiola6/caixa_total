@@ -201,6 +201,10 @@ git tag back-v1.0.2
 git push origin back-v1.0.2
 ```
 
+Após o build/push da imagem, o job de deploy fica aguardando **aprovação manual** no environment `production`.
+
+Para restringir aprovação a uma única pessoa: em **Settings → Environments → production → Required reviewers**, adicione apenas o usuário aprovador.
+
 O workflow **não altera** variáveis sensíveis do Cloud Run (`DATABASE_URL`, `JWT_SECRET`, etc.); apenas atualiza a **imagem**. Ajuste essas variáveis no console do GCP ou com `gcloud run services update` quando necessário.
 
 ### Infraestrutura

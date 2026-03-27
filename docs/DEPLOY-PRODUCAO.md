@@ -14,7 +14,7 @@ Para um resumo rápido, veja também o [README](../README.md).
 | Front web | Google Cloud Run (nginx servindo `out/` do Next.js) | Interface estática exportada |
 | Banco | PostgreSQL gerenciado (ex.: Neon) | Dados persistidos |
 | Imagens | Artifact Registry (`us-central1-docker.pkg.dev`) | Registry das imagens Docker |
-| CI/CD | GitHub Actions | Build e deploy ao **push de tags** |
+| CI/CD | GitHub Actions | Build ao **push de tags** + deploy após **aprovação manual** |
 
 Fluxo de dados no navegador:
 
@@ -34,6 +34,8 @@ Os workflows em `.github/workflows/` disparam **somente** em **push de tag** par
 |----------------|----------|--------|
 | `back-v*` | `deploy-back.yml` | Build da imagem `back`, push no Artifact Registry, deploy no serviço Cloud Run do backend |
 | `front-v*` | `deploy-front.yml` | Build Next.js com `NEXT_PUBLIC_API_URL`, imagem `front`, deploy no serviço Cloud Run do frontend |
+
+Após o build/push da imagem, o job de deploy fica em `Waiting` até aprovação manual do environment `production`.
 
 Exemplos válidos:
 
@@ -65,7 +67,8 @@ O mesmo para o front com `front-v1.0.1`.
    - `.../back:1.0.1`
    - `.../back:latest`
 6. `docker push` das duas tags.
-7. `gcloud run deploy caixa-total-back` com a imagem versionada, região `us-central1`, porta **4000**.
+7. Job `deploy` aguarda aprovação manual no environment `production`.
+8. Após aprovação: autentica no GCP e executa `gcloud run deploy caixa-total-back` com a imagem versionada, região `us-central1`, porta **4000**.
 
 **Observação:** o deploy **não redefine** `DATABASE_URL`, `JWT_SECRET`, `FRONT_URL` etc. no Cloud Run. Essas variáveis devem estar já configuradas no serviço (console ou `gcloud run services update`). O pipeline só troca a **imagem**.
 
@@ -77,7 +80,21 @@ O mesmo para o front com `front-v1.0.1`.
 4. Autenticação GCP + configure-docker (igual ao back).
 5. Versão da tag: `front-v1.0.2` → imagem `1.0.2`.
 6. `docker build` em `front/` (Dockerfile copia `out/` e nginx).
-7. Push e `gcloud run deploy caixa-total-front`, porta **8080**.
+7. Push das imagens.
+8. Job `deploy` aguarda aprovação manual no environment `production`.
+9. Após aprovação: `gcloud run deploy caixa-total-front`, porta **8080**.
+
+### 3.3 Aprovação manual restrita (somente owner)
+
+Para garantir que outros devs possam disparar o pipeline, mas **não aprovar deploy**:
+
+1. Vá em **GitHub → Settings → Environments → New environment**.
+2. Crie (ou edite) o environment chamado `production`.
+3. Em **Required reviewers**, adicione **somente o seu usuário GitHub** (por exemplo, `joao-teixeira`).
+4. Não adicione mais ninguém nessa lista.
+5. Se você quer aprovar também os deploys iniciados por você, deixe **Prevent self-review** desativado.
+
+Com isso, qualquer dev com permissão para criar tag ainda consegue iniciar o workflow, mas apenas você consegue liberar a fase final de deploy.
 
 ---
 
