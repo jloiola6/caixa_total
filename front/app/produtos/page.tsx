@@ -23,12 +23,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  ProductFiltersDialog,
+  countActiveProductFilters,
+  type ProductFilters,
+  type ProductFilterOptions,
+} from "@/components/product-filters-dialog"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ProductFormDialog } from "@/components/product-form-dialog"
@@ -49,6 +48,72 @@ const CATEGORY_COLORS: Record<ProductCategory, string> = {
   controles: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
   eletronicos: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
   diversos: "bg-neutral-100 text-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-300",
+}
+
+function createEmptyProductFilters(): ProductFilters {
+  return {
+    categories: [],
+    brands: [],
+    models: [],
+    sizes: [],
+    colors: [],
+    controlNumbers: [],
+  }
+}
+
+function normalizeFilterValue(value: string | null | undefined): string {
+  return value?.trim() ?? ""
+}
+
+function uniqueFilterValues(values: Array<string | null | undefined>): string[] {
+  const byNormalized = new Map<string, string>()
+  for (const raw of values) {
+    const trimmed = normalizeFilterValue(raw)
+    if (!trimmed) continue
+    const key = trimmed.toLocaleLowerCase()
+    if (!byNormalized.has(key)) {
+      byNormalized.set(key, trimmed)
+    }
+  }
+  return Array.from(byNormalized.values()).sort((a, b) =>
+    a.localeCompare(b, "pt-BR", { sensitivity: "base" })
+  )
+}
+
+function buildProductFilterOptions(products: Product[]): ProductFilterOptions {
+  const categories = Array.from(new Set(products.map((p) => p.category))).sort((a, b) => {
+    const labelA = PRODUCT_CATEGORY_LABELS[a] ?? a
+    const labelB = PRODUCT_CATEGORY_LABELS[b] ?? b
+    return labelA.localeCompare(labelB, "pt-BR", { sensitivity: "base" })
+  })
+
+  return {
+    categories,
+    brands: uniqueFilterValues(products.map((p) => p.brand)),
+    models: uniqueFilterValues(products.map((p) => p.model)),
+    sizes: uniqueFilterValues(products.map((p) => p.size)),
+    colors: uniqueFilterValues(products.map((p) => p.color)),
+    controlNumbers: uniqueFilterValues(products.map((p) => p.controlNumber)),
+  }
+}
+
+function matchesTextFilter(selectedValues: string[], rawValue: string | null): boolean {
+  if (selectedValues.length === 0) return true
+  const normalized = normalizeFilterValue(rawValue)
+  if (!normalized) return false
+  return selectedValues.includes(normalized)
+}
+
+function matchesProductFilters(product: Product, filters: ProductFilters): boolean {
+  if (filters.categories.length > 0 && !filters.categories.includes(product.category)) {
+    return false
+  }
+  if (!matchesTextFilter(filters.brands, product.brand)) return false
+  if (!matchesTextFilter(filters.models, product.model)) return false
+  if (!matchesTextFilter(filters.sizes, product.size)) return false
+  if (!matchesTextFilter(filters.colors, product.color)) return false
+  if (!matchesTextFilter(filters.controlNumbers, product.controlNumber)) return false
+  return true
 }
 
 function ProductImage({ src, name }: { src: string | null; name: string }) {
@@ -81,7 +146,13 @@ function productSubtitle(product: Product): string {
 export default function ProdutosPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [query, setQuery] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [productFilters, setProductFilters] = useState<ProductFilters>(() =>
+    createEmptyProductFilters()
+  )
+  const [filterOptions, setFilterOptions] = useState<ProductFilterOptions>(() =>
+    createEmptyProductFilters()
+  )
   const [formOpen, setFormOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [stockProduct, setStockProduct] = useState<Product | null>(null)
@@ -95,6 +166,10 @@ export default function ProdutosPage() {
       .map((id) => getProductById(id))
       .filter((p): p is Product => p !== undefined)
   }, [selectedIds])
+
+  const activeFiltersCount = useMemo(() => {
+    return countActiveProductFilters(productFilters)
+  }, [productFilters])
 
   const allVisibleSelected =
     products.length > 0 && products.every((p) => selectedIds.has(p.id))
@@ -126,12 +201,13 @@ export default function ProdutosPage() {
   }
 
   const loadProducts = useCallback(() => {
-    let prods = getProducts(query)
-    if (categoryFilter !== "all") {
-      prods = prods.filter((p) => p.category === categoryFilter)
-    }
+    const allProducts = getProducts()
+    setFilterOptions(buildProductFilterOptions(allProducts))
+
+    let prods = query.trim() ? getProducts(query) : allProducts
+    prods = prods.filter((p) => matchesProductFilters(p, productFilters))
     setProducts(prods)
-  }, [query, categoryFilter])
+  }, [query, productFilters])
 
   useEffect(() => {
     loadProducts()
@@ -217,20 +293,26 @@ export default function ProdutosPage() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <Filter className="size-4 text-muted-foreground shrink-0" />
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Categoria" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {Object.entries(PRODUCT_CATEGORY_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() => setFiltersOpen(true)}
+          >
+            <Filter className="size-4" />
+            Filtros
+            {activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
+          </Button>
+          {activeFiltersCount > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setProductFilters(createEmptyProductFilters())}
+            >
+              Limpar filtros
+            </Button>
+          )}
         </div>
       </div>
 
@@ -444,6 +526,14 @@ export default function ProdutosPage() {
       )}
 
       {/* Dialogs */}
+      <ProductFiltersDialog
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        value={productFilters}
+        options={filterOptions}
+        onApply={setProductFilters}
+      />
+
       <ProductFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
