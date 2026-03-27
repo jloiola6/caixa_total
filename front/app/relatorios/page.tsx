@@ -88,6 +88,7 @@ function RelatoriosContent() {
   const [apiTopProducts, setApiTopProducts] = useState<{ productId: string; productName: string; totalQty: number; totalCents: number }[]>([])
   const [apiLoading, setApiLoading] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [useApi, setUseApi] = useState(false)
 
   const startISO = useMemo(
     () => startOfDay(dateRange.from).toISOString(),
@@ -98,16 +99,11 @@ function RelatoriosContent() {
     [dateRange.to]
   )
 
-  const loadData = useCallback(() => {
+  const loadLocalData = useCallback(() => {
     setSales(getSales(startISO, endISO))
   }, [startISO, endISO])
 
   useEffect(() => {
-    if (!readOnly) loadData()
-  }, [readOnly, loadData])
-
-  useEffect(() => {
-    if (!readOnly) return
     setApiLoading(true)
     setApiError(null)
     Promise.all([
@@ -130,10 +126,15 @@ function RelatoriosContent() {
         )
         setApiSalesFull(salesRes.map((s) => ({ id: s.id, items: s.items })))
         setApiTopProducts(top)
+        setUseApi(true)
       })
-      .catch((e) => setApiError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => {
+        setApiError(e instanceof Error ? e.message : String(e))
+        setUseApi(false)
+        loadLocalData()
+      })
       .finally(() => setApiLoading(false))
-  }, [readOnly, startISO, endISO])
+  }, [startISO, endISO, loadLocalData])
 
   const dailySummaryLocal = useMemo(
     () => getDailySummary(startISO, endISO),
@@ -143,9 +144,9 @@ function RelatoriosContent() {
     () => getTopProducts(startISO, endISO, 5),
     [startISO, endISO]
   )
-  const dailySummary = readOnly ? apiSummary : dailySummaryLocal
-  const topProducts = readOnly ? apiTopProducts : topProductsLocal
-  const salesData = readOnly ? apiSales : sales
+  const dailySummary = useApi ? apiSummary : dailySummaryLocal
+  const topProducts = useApi ? apiTopProducts : topProductsLocal
+  const salesData = useApi ? apiSales : sales
 
   const totalRevenue = useMemo(
     () => salesData.reduce((sum, s) => sum + s.totalCents, 0),
@@ -177,7 +178,7 @@ function RelatoriosContent() {
       setExpandedItems([])
     } else {
       setExpandedSale(saleId)
-      if (readOnly) {
+      if (useApi) {
         const full = apiSalesFull.find((s) => s.id === saleId)
         setExpandedItems(full?.items ?? [])
       } else {

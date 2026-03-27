@@ -16,11 +16,13 @@ import {
   clearStoredToken,
   type AuthUser,
 } from "@/lib/auth-api";
+import { pullFromServer } from "@/lib/sync-pull";
 
 type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
+  synced: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -32,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [synced, setSynced] = useState(false);
 
   const refreshUser = useCallback(async () => {
     const u = await getMe();
@@ -50,9 +53,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setToken(t);
     getMe()
-      .then((u) => {
+      .then(async (u) => {
         setUser(u);
         if (u?.storeId) setStoredStoreId(u.storeId);
+        if (u) {
+          const result = await pullFromServer();
+          setSynced(result.synced);
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -64,6 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredStoreId(newUser.storeId);
       setToken(newToken);
       setUser(newUser);
+      const result = await pullFromServer();
+      setSynced(result.synced);
       return newUser;
     },
     []
@@ -81,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         loading,
+        synced,
         login,
         logout,
         refreshUser,
