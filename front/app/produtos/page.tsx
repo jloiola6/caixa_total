@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Plus, Search, Pencil, PackageMinus, Trash2, Filter, Percent } from "lucide-react"
+import { Plus, Search, Pencil, PackageMinus, Trash2, Filter, Percent, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge"
 import { ProductFormDialog } from "@/components/product-form-dialog"
 import { StockAdjustDialog } from "@/components/stock-adjust-dialog"
 import { BulkPriceDialog } from "@/components/bulk-price-dialog"
+import { ProductExportDialog } from "@/components/product-export-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { getProducts, deleteProduct, getProductById } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
@@ -159,6 +160,7 @@ export default function ProdutosPage() {
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [bulkPriceOpen, setBulkPriceOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const isMobile = useIsMobile()
 
   const selectedProducts = useMemo(() => {
@@ -273,6 +275,15 @@ export default function ProdutosPage() {
             <Percent className="size-4" />
             Preco em massa
             {selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ""}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() => setExportOpen(true)}
+          >
+            <Download className="size-4" />
+            Exportar
           </Button>
           <Button onClick={handleNew} className="gap-2">
             <Plus className="size-4" />
@@ -533,6 +544,8 @@ export default function ProdutosPage() {
         options={filterOptions}
         onApply={setProductFilters}
       />
+
+      <ProductExportDialog open={exportOpen} onOpenChange={setExportOpen} />
 
       <ProductFormDialog
         open={formOpen}
