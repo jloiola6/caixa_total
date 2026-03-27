@@ -7,6 +7,7 @@ import type {
   TopProduct,
   PaymentSplit,
   StockLog,
+  AppNotification,
 } from "./types"
 
 // --------------- helpers ---------------
@@ -24,18 +25,219 @@ function randomUUID(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-function read<T>(key: string): T[] {
-  if (typeof window === "undefined") return []
+const CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+})
+
+function formatCurrencyCents(cents: number): string {
+  return CURRENCY_FORMATTER.format(cents / 100)
+}
+
+const OFFLINE_DB_NAME = "caixatotal_offline_db"
+const OFFLINE_DB_VERSION = 1
+const OFFLINE_STORE_NAME = "collections"
+
+const memoryCache = new Map<string, unknown[]>()
+const loadedKeys = new Set<string>()
+const loadingKeys = new Map<string, Promise<void>>()
+const keyVersions = new Map<string, number>()
+
+let dbPromise: Promise<IDBDatabase> | null = null
+
+function cloneArray<T>(data: T[]): T[] {
   try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T[]) : []
+    return structuredClone(data)
   } catch {
-    return []
+    return JSON.parse(JSON.stringify(data)) as T[]
   }
 }
 
+function safeParseArray<T>(raw: string | null): T[] | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as T[]) : null
+  } catch {
+    return null
+  }
+}
+
+function readLocalStorageArray<T>(key: string): T[] | null {
+  if (typeof window === "undefined") return null
+  return safeParseArray<T>(localStorage.getItem(key))
+}
+
+function writeLocalStorageBestEffort<T>(key: string, data: T[]) {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(key, JSON.stringify(data))
+  } catch {
+    // localStorage pode estourar quota; IndexedDB continua sendo a fonte offline.
+  }
+}
+
+function bumpVersion(key: string) {
+  const current = keyVersions.get(key) ?? 0
+  keyVersions.set(key, current + 1)
+}
+
+function isRecordWithId(value: unknown): value is { id: string } {
+  if (!value || typeof value !== "object") return false
+  const maybeId = (value as { id?: unknown }).id
+  return typeof maybeId === "string"
+}
+
+function mergeById(base: unknown[], current: unknown[]): unknown[] {
+  const baseOk = base.every(isRecordWithId)
+  const currentOk = current.every(isRecordWithId)
+  if (!baseOk || !currentOk) return current
+
+  const map = new Map<string, unknown>()
+  for (const item of base) map.set(item.id, item)
+  for (const item of current) map.set(item.id, item)
+  return Array.from(map.values())
+}
+
+function openOfflineDb(): Promise<IDBDatabase> {
+  if (typeof window === "undefined" || !("indexedDB" in window)) {
+    return Promise.reject(new Error("IndexedDB indisponivel"))
+  }
+  if (dbPromise) return dbPromise
+
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION)
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains(OFFLINE_STORE_NAME)) {
+        db.createObjectStore(OFFLINE_STORE_NAME)
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error ?? new Error("Falha ao abrir IndexedDB"))
+  })
+
+  return dbPromise
+}
+
+function readFromIndexedDb<T>(key: string): Promise<T[] | null> {
+  return openOfflineDb()
+    .then(
+      (db) =>
+        new Promise<T[] | null>((resolve, reject) => {
+          const tx = db.transaction(OFFLINE_STORE_NAME, "readonly")
+          const store = tx.objectStore(OFFLINE_STORE_NAME)
+          const req = store.get(key)
+          req.onsuccess = () => {
+            const value = req.result
+            resolve(Array.isArray(value) ? (value as T[]) : null)
+          }
+          req.onerror = () => reject(req.error ?? new Error("Falha ao ler IndexedDB"))
+        })
+    )
+    .catch(() => null)
+}
+
+function writeToIndexedDb<T>(key: string, data: T[]): Promise<void> {
+  return openOfflineDb()
+    .then(
+      (db) =>
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(OFFLINE_STORE_NAME, "readwrite")
+          const store = tx.objectStore(OFFLINE_STORE_NAME)
+          const req = store.put(data, key)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error ?? new Error("Falha ao gravar IndexedDB"))
+        })
+    )
+    .catch(() => {})
+}
+
+function dispatchDataLoadedEvent() {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new Event("storage"))
+}
+
+function ensureLoaded(key: string) {
+  if (typeof window === "undefined") return
+  if (loadedKeys.has(key) || loadingKeys.has(key)) return
+
+  if (!memoryCache.has(key)) {
+    const localData = readLocalStorageArray<unknown>(key)
+    memoryCache.set(key, localData ?? [])
+  }
+
+  const startVersion = keyVersions.get(key) ?? 0
+  const promise = (async () => {
+    const indexedData = await readFromIndexedDb<unknown>(key)
+    const currentData = memoryCache.get(key) ?? []
+    const changedDuringLoad = (keyVersions.get(key) ?? 0) !== startVersion
+
+    if (changedDuringLoad) {
+      if (indexedData && indexedData.length > 0) {
+        const merged = mergeById(indexedData, currentData)
+        memoryCache.set(key, merged)
+        writeLocalStorageBestEffort(key, merged)
+        await writeToIndexedDb(key, merged)
+      } else {
+        await writeToIndexedDb(key, currentData)
+      }
+    } else if (indexedData) {
+      memoryCache.set(key, indexedData)
+      writeLocalStorageBestEffort(key, indexedData)
+    } else {
+      await writeToIndexedDb(key, currentData)
+    }
+
+    loadedKeys.add(key)
+    dispatchDataLoadedEvent()
+  })()
+    .catch(() => {
+      loadedKeys.add(key)
+    })
+    .finally(() => {
+      loadingKeys.delete(key)
+    })
+
+  loadingKeys.set(key, promise)
+}
+
+function read<T>(key: string): T[] {
+  if (typeof window === "undefined") return []
+  ensureLoaded(key)
+  const data = memoryCache.get(key)
+  return cloneArray((data as T[]) ?? [])
+}
+
 function write<T>(key: string, data: T[]) {
-  localStorage.setItem(key, JSON.stringify(data))
+  if (typeof window === "undefined") return
+  const cloned = cloneArray(data)
+  memoryCache.set(key, cloned as unknown[])
+  loadedKeys.add(key)
+  bumpVersion(key)
+  writeLocalStorageBestEffort(key, cloned)
+  void writeToIndexedDb(key, cloned)
+  dispatchDataLoadedEvent()
+}
+
+export async function readCollectionAsync<T>(key: string): Promise<T[]> {
+  if (typeof window === "undefined") return []
+  ensureLoaded(key)
+  const loading = loadingKeys.get(key)
+  if (loading) await loading
+  const data = memoryCache.get(key)
+  return cloneArray((data as T[]) ?? [])
+}
+
+export async function writeCollectionAsync<T>(key: string, data: T[]): Promise<void> {
+  if (typeof window === "undefined") return
+  const cloned = cloneArray(data)
+  memoryCache.set(key, cloned as unknown[])
+  loadedKeys.add(key)
+  bumpVersion(key)
+  writeLocalStorageBestEffort(key, cloned)
+  await writeToIndexedDb(key, cloned)
+  dispatchDataLoadedEvent()
 }
 
 function getStoreSuffix(): string {
@@ -55,6 +257,9 @@ export function getSaleItemsKey() {
 }
 export function getStockLogsKey() {
   return `caixatotal_stock_logs${getStoreSuffix()}`
+}
+export function getNotificationsKey() {
+  return `caixatotal_notifications${getStoreSuffix()}`
 }
 
 // --------------- Products ---------------
@@ -185,6 +390,70 @@ export function getStockLogs(productId?: string): StockLog[] {
   return logs.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
+// --------------- Notifications ---------------
+
+function buildSaleNotification(sale: Sale): AppNotification {
+  const itemsLabel = sale.itemsCount === 1 ? "1 item" : `${sale.itemsCount} itens`
+  return {
+    id: randomUUID(),
+    type: "sale_created",
+    title: "Nova venda registrada",
+    message: `${itemsLabel} · Total ${formatCurrencyCents(sale.totalCents)}`,
+    saleId: sale.id,
+    saleCreatedAt: sale.createdAt,
+    createdAt: new Date().toISOString(),
+    readAt: null,
+  }
+}
+
+function appendNotification(notification: AppNotification): AppNotification {
+  const key = getNotificationsKey()
+  const notifications = read<AppNotification>(key)
+  notifications.unshift(notification)
+  if (notifications.length > 1000) notifications.length = 1000
+  write(key, notifications)
+  return notification
+}
+
+export function getNotifications(limit?: number): AppNotification[] {
+  const notifications = read<AppNotification>(getNotificationsKey())
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  if (!limit || limit <= 0) return notifications
+  return notifications.slice(0, limit)
+}
+
+export function getUnreadNotificationsCount(): number {
+  return read<AppNotification>(getNotificationsKey()).filter((n) => !n.readAt).length
+}
+
+export function markNotificationAsRead(id: string): boolean {
+  const key = getNotificationsKey()
+  const notifications = read<AppNotification>(key)
+  const idx = notifications.findIndex((n) => n.id === id)
+  if (idx === -1) return false
+  if (notifications[idx].readAt) return true
+  notifications[idx] = {
+    ...notifications[idx],
+    readAt: new Date().toISOString(),
+  }
+  write(key, notifications)
+  return true
+}
+
+export function markAllNotificationsAsRead(): number {
+  const key = getNotificationsKey()
+  const notifications = read<AppNotification>(key)
+  let changed = 0
+  const now = new Date().toISOString()
+  const next = notifications.map((n) => {
+    if (n.readAt) return n
+    changed += 1
+    return { ...n, readAt: now }
+  })
+  if (changed > 0) write(key, next)
+  return changed
+}
+
 // --------------- Sales ---------------
 
 export interface CreateSaleInput {
@@ -253,6 +522,8 @@ export function createSale(
   const allSaleItems = read<SaleItem>(getSaleItemsKey())
   allSaleItems.push(...saleItems)
   write(getSaleItemsKey(), allSaleItems)
+
+  appendNotification(buildSaleNotification(sale))
 
   return { sale, saleItems }
 }

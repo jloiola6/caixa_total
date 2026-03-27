@@ -7,6 +7,7 @@ import { authRouter } from "./routes/auth.js";
 import { adminRouter } from "./routes/admin.js";
 import { syncRouter } from "./routes/sync.js";
 import { reportRouter } from "./routes/report.js";
+import { notificationsRouter } from "./routes/notifications.js";
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use("/auth", authRouter);
 app.use("/admin", adminRouter);
 app.use("/sync", syncRouter);
 app.use("/report", reportRouter);
+app.use("/notifications", notificationsRouter);
 
 app.listen(config.port, "0.0.0.0", () => {
   console.log(`Backend listening on http://0.0.0.0:${config.port}`);

@@ -338,6 +338,95 @@ gcloud run services update caixa-total-back \
 
 **Manual (fallback):** build local da imagem, push para o Artifact Registry e `gcloud run deploy` com a nova tag de imagem — mesmo fluxo das seções 3 e 4 deste README, incrementando a versão (`v2`, `v3`, …).
 
+### Atualização em produção (passo a passo detalhado)
+
+Esta seção descreve o fluxo recomendado para atualizar o sistema em produção com segurança, incluindo mudanças de banco (migrations) e publicação das novas imagens.
+
+#### 1. Preparar release e validar localmente
+
+```bash
+# Na raiz do projeto
+pnpm -C back db:generate
+pnpm -C back build
+pnpm -C front build
+```
+
+Se o backend tiver mudança de schema Prisma (como a tabela de notificações), confirme que existe uma pasta nova em `back/prisma/migrations/`.
+
+#### 2. Aplicar migrations no banco de produção
+
+Use a `DATABASE_URL` de produção (Neon/GCP/etc). O script do projeto para produção é:
+
+```bash
+DATABASE_URL="postgresql://USUARIO:SENHA@HOST:PORTA/DB" pnpm -C back db:migrate
+```
+
+Esse comando executa `prisma migrate deploy`, que aplica somente migrations pendentes.
+
+#### 2.1. Caso especial: banco antigo sem histórico Prisma (`P3005`)
+
+Se o banco já existia antes do versionamento por migration, o `deploy` pode retornar:
+
+```text
+Error: P3005 The database schema is not empty.
+```
+
+Nesse caso, faça o baseline uma única vez (marcar migrations antigas como já aplicadas) e depois rode o deploy:
+
+```bash
+DATABASE_URL="postgresql://USUARIO:SENHA@HOST:PORTA/DB" \
+pnpm -C back exec prisma migrate resolve --applied 20250302000000_init
+
+DATABASE_URL="postgresql://USUARIO:SENHA@HOST:PORTA/DB" \
+pnpm -C back exec prisma migrate resolve --applied 20250302100000_add_multi_tenant
+
+DATABASE_URL="postgresql://USUARIO:SENHA@HOST:PORTA/DB" \
+pnpm -C back exec prisma migrate deploy
+```
+
+Depois do baseline, as próximas atualizações voltam ao fluxo normal (`db:migrate`).
+
+#### 3. Publicar backend em produção
+
+Fluxo recomendado (CI/CD com aprovação manual):
+
+```bash
+git tag back-vX.Y.Z
+git push origin back-vX.Y.Z
+```
+
+No GitHub Actions, aprove o job no environment `production` (configurado com reviewer obrigatório).
+
+#### 4. Publicar frontend em produção
+
+Após backend atualizado e saudável:
+
+```bash
+git tag front-vX.Y.Z
+git push origin front-vX.Y.Z
+```
+
+Também exige aprovação manual no environment `production`.
+
+#### 5. Verificação pós-deploy (smoke test)
+
+```bash
+curl https://URL_DO_BACKEND/health
+```
+
+Esperado:
+
+```json
+{"status":"ok","db":"connected"}
+```
+
+Além disso, valide no sistema:
+
+1. Login com usuário de loja.
+2. Registro de uma nova venda.
+3. Abertura da tela `/notificacoes` para confirmar criação da notificação no banco.
+4. Marcar notificação como lida e confirmar atualização do contador.
+
 ---
 
 ## Desktop com Electron
@@ -477,17 +566,25 @@ Os dados vêm **da API quando há conexão**; sem rede, a tela usa o que estiver
 - `GET /report/sales`
 - `GET /report/top-products`
 
+### Notificações
+
+- `GET /notifications`
+- `GET /notifications/unread-count`
+- `PATCH /notifications/:id/read`
+- `POST /notifications/read-all`
+
 ---
 
 ## Modelo de dados resumido
 
-Entidades: `Store`, `User`, `PasswordResetToken`, `Product`, `Sale`, `SaleItem`, `SalePayment`, `StockLog`.
+Entidades: `Store`, `User`, `PasswordResetToken`, `Product`, `Sale`, `SaleItem`, `SalePayment`, `StockLog`, `Notification`.
 
 Enums:
 
 - Categorias: `roupas`, `tenis`, `controles`, `eletronicos`, `diversos`
 - Pagamentos: `dinheiro`, `credito`, `debito`, `fiado`
 - Perfis: `SUPER_ADMIN`, `STORE_USER`
+- Notificações: `sale_created`
 
 ---
 

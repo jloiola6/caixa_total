@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
-import { ProductCategory, PaymentMethod } from "@prisma/client";
+import { NotificationType, ProductCategory, PaymentMethod } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth.js";
 import { requireStoreUserOrSuperAdmin } from "../middleware/auth.js";
 
@@ -78,6 +78,16 @@ function toPaymentMethod(s: string): PaymentMethod {
   return "dinheiro";
 }
 
+const CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
+
+function buildSaleNotificationMessage(totalCents: number, itemsCount: number): string {
+  const itemsLabel = itemsCount === 1 ? "1 item" : `${itemsCount} itens`;
+  return `${itemsLabel} · Total ${CURRENCY_FORMATTER.format(totalCents / 100)}`;
+}
+
 syncRouter.post("/", async (req, res) => {
   try {
     const body = req.body as SyncBody & { storeId?: string };
@@ -92,8 +102,30 @@ syncRouter.post("/", async (req, res) => {
     const saleItems = body.sale_items ?? [];
     const explicitSalePayments = body.sale_payments ?? [];
     const stockLogs = body.stock_logs ?? [];
+    const newSaleNotifications: Array<{
+      id: string;
+      storeId: string;
+      type: NotificationType;
+      title: string;
+      message: string;
+      saleId: string;
+      createdAt: Date;
+    }> = [];
 
     const now = new Date();
+
+    const existingSaleIds = new Set<string>();
+    if (sales.length > 0) {
+      const ids = sales.map((s) => s.id);
+      const existingSales = await prisma.sale.findMany({
+        where: {
+          storeId,
+          id: { in: ids },
+        },
+        select: { id: true },
+      });
+      for (const s of existingSales) existingSaleIds.add(s.id);
+    }
 
     const paymentsFromSales: { id: string; saleId: string; method: string; amountCents: number }[] = [];
     if (explicitSalePayments.length === 0 && sales.length > 0) {
@@ -183,6 +215,18 @@ syncRouter.post("/", async (req, res) => {
           updatedAt: now,
         },
       });
+
+      if (!existingSaleIds.has(s.id)) {
+        newSaleNotifications.push({
+          id: crypto.randomUUID(),
+          storeId,
+          type: NotificationType.sale_created,
+          title: "Nova venda registrada",
+          message: buildSaleNotificationMessage(s.totalCents, s.itemsCount),
+          saleId: s.id,
+          createdAt: now,
+        });
+      }
     }
 
     for (const si of saleItems) {
@@ -244,6 +288,13 @@ syncRouter.post("/", async (req, res) => {
           reason: sl.reason ?? null,
           createdAt: new Date(sl.createdAt),
         },
+      });
+    }
+
+    if (newSaleNotifications.length > 0) {
+      await prisma.notification.createMany({
+        data: newSaleNotifications,
+        skipDuplicates: true,
       });
     }
 

@@ -28,6 +28,17 @@ export type ServerSyncState = {
   stock_logs: { id: string; createdAt: string; [key: string]: unknown }[];
 };
 
+export type ServerNotification = {
+  id: string;
+  type: "sale_created";
+  title: string;
+  message: string;
+  saleId: string | null;
+  saleCreatedAt: string | null;
+  createdAt: string;
+  readAt: string | null;
+};
+
 export async function getSyncState(storeId?: string): Promise<ServerSyncState> {
   const since = "1970-01-01T00:00:00.000Z";
   let url = getApiUrl(`/sync?since=${encodeURIComponent(since)}`);
@@ -108,4 +119,70 @@ export async function getReportTopProducts(
   const res = await fetch(url, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(`Report failed: ${res.status}`);
   return res.json();
+}
+
+export async function getNotifications(
+  params?: { limit?: number; unreadOnly?: boolean; storeId?: string }
+): Promise<ServerNotification[]> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.unreadOnly) query.set("unreadOnly", "1");
+  if (params?.storeId) query.set("storeId", params.storeId);
+
+  const qs = query.toString();
+  const res = await fetch(getApiUrl(`/notifications${qs ? `?${qs}` : ""}`), {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(`Notifications failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getUnreadNotificationsCount(
+  params?: { storeId?: string }
+): Promise<number> {
+  const query = new URLSearchParams();
+  if (params?.storeId) query.set("storeId", params.storeId);
+  const qs = query.toString();
+  const res = await fetch(
+    getApiUrl(`/notifications/unread-count${qs ? `?${qs}` : ""}`),
+    { headers: getAuthHeaders() }
+  );
+  if (!res.ok) throw new Error(`Unread notifications failed: ${res.status}`);
+  const data = (await res.json()) as { unreadCount?: number };
+  return Number(data.unreadCount ?? 0);
+}
+
+export async function markNotificationAsRead(
+  id: string,
+  params?: { storeId?: string }
+): Promise<void> {
+  const query = new URLSearchParams();
+  if (params?.storeId) query.set("storeId", params.storeId);
+  const qs = query.toString();
+  const res = await fetch(
+    getApiUrl(`/notifications/${encodeURIComponent(id)}/read${qs ? `?${qs}` : ""}`),
+    {
+      method: "PATCH",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({}),
+    }
+  );
+  if (!res.ok) throw new Error(`Mark notification read failed: ${res.status}`);
+}
+
+export async function markAllNotificationsAsRead(
+  params?: { storeId?: string }
+): Promise<void> {
+  const query = new URLSearchParams();
+  if (params?.storeId) query.set("storeId", params.storeId);
+  const qs = query.toString();
+  const res = await fetch(
+    getApiUrl(`/notifications/read-all${qs ? `?${qs}` : ""}`),
+    {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({}),
+    }
+  );
+  if (!res.ok) throw new Error(`Mark all notifications read failed: ${res.status}`);
 }

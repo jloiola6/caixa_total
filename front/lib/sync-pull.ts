@@ -6,7 +6,7 @@ export async function pullFromServer(): Promise<{ synced: boolean }> {
   try {
     const storeId = getStoredStoreId() ?? undefined
     const serverState = await getSyncState(storeId)
-    applyServerState(serverState)
+    await applyServerState(serverState)
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("storage"))
     }

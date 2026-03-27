@@ -27,6 +27,10 @@ enum UserRole {
   STORE_USER
 }
 
+enum NotificationType {
+  sale_created
+}
+
 model Store {
   id        String   @id @default(uuid())
   name     String
@@ -37,6 +41,7 @@ model Store {
   products Product[]
   sales    Sale[]
   stockLogs StockLog[]
+  notifications Notification[]
 }
 
 model User {
@@ -95,6 +100,7 @@ model Sale {
   updatedAt     DateTime       @default(now())
   items        SaleItem[]
   payments      SalePayment[]
+  notifications Notification[]
 }
 
 model SaleItem {
@@ -126,4 +132,22 @@ model StockLog {
   delta       Int
   reason      String?
   createdAt   DateTime
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  storeId   String
+  store     Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  saleId    String?
+  sale      Sale?            @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  createdAt DateTime         @default(now())
+  readAt    DateTime?
+
+  @@index([storeId, createdAt])
+  @@index([storeId, readAt])
+  @@index([saleId])
+  @@unique([saleId, type])
 }

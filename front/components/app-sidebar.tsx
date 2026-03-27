@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ShoppingCart, Package, BarChart3, RefreshCw, Shield, LogOut } from "lucide-react"
+import { ShoppingCart, Package, BarChart3, RefreshCw, Shield, LogOut, Bell } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -19,11 +19,15 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle"
 import { SyncModal } from "@/components/sync-modal"
 import { useAuth } from "@/contexts/auth-context"
+import { Badge } from "@/components/ui/badge"
+import { getUnreadNotificationsCount } from "@/lib/api"
+import { getStoredStoreId } from "@/lib/auth-api"
 
 const navItems = [
   { title: "Caixa", href: "/caixa", icon: ShoppingCart },
   { title: "Produtos", href: "/produtos", icon: Package },
   { title: "Relatorios", href: "/relatorios", icon: BarChart3 },
+  { title: "Notificacoes", href: "/notificacoes", icon: Bell },
 ]
 
 export function AppSidebar() {
@@ -31,6 +35,39 @@ export function AppSidebar() {
   const router = useRouter()
   const { user, logout } = useAuth()
   const [syncOpen, setSyncOpen] = useState(false)
+  const [unreadNotifications, setUnreadNotifications] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const storeId = getStoredStoreId() ?? undefined
+        const unreadCount = await getUnreadNotificationsCount({ storeId })
+        if (!cancelled) setUnreadNotifications(unreadCount)
+      } catch (e) {
+        console.error("Falha ao carregar contador de notificacoes:", e)
+      }
+    }
+
+    void load()
+    const interval = window.setInterval(() => void load(), 30000)
+    const onFocus = () => void load()
+    const onStorage = () => void load()
+    const onNotificationsUpdated = () => void load()
+
+    window.addEventListener("focus", onFocus)
+    window.addEventListener("storage", onStorage)
+    window.addEventListener("notifications:updated", onNotificationsUpdated)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      window.removeEventListener("focus", onFocus)
+      window.removeEventListener("storage", onStorage)
+      window.removeEventListener("notifications:updated", onNotificationsUpdated)
+    }
+  }, [])
 
   function handleLogout() {
     logout()
@@ -69,6 +106,11 @@ export function AppSidebar() {
                     <Link href={item.href}>
                       <item.icon />
                       <span>{item.title}</span>
+                      {item.href === "/notificacoes" && unreadNotifications > 0 && (
+                        <Badge className="ml-auto h-5 min-w-5 justify-center px-1 text-[11px]">
+                          {unreadNotifications}
+                        </Badge>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

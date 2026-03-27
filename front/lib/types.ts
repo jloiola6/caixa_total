@@ -103,3 +103,18 @@ export interface TopProduct {
   totalQty: number
   totalCents: number
 }
+
+// --------------- Notifications ---------------
+
+export type NotificationType = "sale_created"
+
+export interface AppNotification {
+  id: string
+  type: NotificationType
+  title: string
+  message: string
+  saleId: string | null
+  saleCreatedAt: string | null
+  createdAt: string
+  readAt: string | null
+}

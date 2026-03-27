@@ -52,7 +52,7 @@ export function SyncModal({
       const storeId = getStoredStoreId() ?? undefined
       const server = await getSyncState(storeId)
       setServerState(server)
-      const list = computeConflicts(server)
+      const list = await computeConflicts(server)
       setConflicts(list)
       setStep("result")
     } catch (e) {
@@ -62,11 +62,11 @@ export function SyncModal({
     }
   }
 
-  function handlePriorizarServidor() {
+  async function handlePriorizarServidor() {
     if (!serverState) return
     setStep("syncing")
     try {
-      applyServerState(serverState)
+      await applyServerState(serverState)
       toast.success("Dados do servidor aplicados localmente.")
       onOpenChange(false)
       reset()
@@ -87,6 +87,7 @@ export function SyncModal({
         toast.success("Dados locais enviados ao servidor.")
         onOpenChange(false)
         reset()
+        window.dispatchEvent(new Event("notifications:updated"))
       } else {
         toast.error(result.error ?? "Falha ao sincronizar")
       }
@@ -106,6 +107,7 @@ export function SyncModal({
         toast.success("Sincronização concluída.")
         onOpenChange(false)
         reset()
+        window.dispatchEvent(new Event("notifications:updated"))
       } else {
         toast.error(result.error ?? "Falha ao sincronizar")
       }
