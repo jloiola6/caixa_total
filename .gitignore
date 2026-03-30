@@ -11,5 +11,11 @@ node_modules/
 .pnpm-store/
 out/
 front/out/
+front/dist-desktop/
+front/*.AppImage
+front/.cache/
+front/.home/
+front/.wine/
+front/pnpm-workspace.yaml
 back/dist/
 .env

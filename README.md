@@ -433,6 +433,12 @@ Além disso, valide no sistema:
 
 O front possui um entrypoint em `front/electron/main.js`.
 
+No modo desktop, a aplicação usa os arquivos estáticos de `out/` e um proxy local:
+
+- Front chama a API em `/api/*`.
+- Electron faz proxy de `/api/*` para o backend real (`DESKTOP_API_URL`).
+- Isso evita bloqueio de CORS no login e nas demais rotas.
+
 ### Desenvolvimento
 
 Com o Next em execução em `http://localhost:3000`:
@@ -446,13 +452,76 @@ pnpm electron
 
 ```bash
 cd front
-NEXT_PUBLIC_API_URL=https://URL_DO_BACKEND pnpm build
-pnpm electron
+pnpm build:desktop
 ```
 
-Quando existe `front/out/index.html`, o Electron carrega os arquivos estáticos gerados pelo build.
+Para gerar o executável Linux (`.AppImage`):
 
-> Para gerar executáveis distribuíveis (`.exe`, `.AppImage`), adicione `electron-builder` ou `electron-packager` ao projeto.
+```bash
+cd front
+pnpm dist:linux
+```
+
+Para gerar o executável/instalador Windows (`.exe`):
+
+```bash
+cd front
+pnpm dist:win
+```
+
+Saída padrão: `front/dist-desktop/`.
+
+Para trocar o backend do desktop sem alterar código:
+
+```bash
+cd front
+DESKTOP_API_URL=https://SEU_BACKEND pnpm build:desktop
+DESKTOP_API_URL=https://SEU_BACKEND pnpm dist:linux
+DESKTOP_API_URL=https://SEU_BACKEND pnpm dist:win
+```
+
+> Use `DESKTOP_API_URL` sem o sufixo `/api`. Exemplo correto: `https://seu-backend.run.app`.
+>
+> Em Linux, gerar `.exe` pode exigir dependências como `wine`. Se faltar no ambiente local, rode o `dist:win` em uma máquina Windows (ou CI Windows).
+
+Fallback via Docker (Linux sem `wine` instalado):
+
+```bash
+cd front
+docker run --rm \
+  -u $(id -u):$(id -g) \
+  -e CI=true \
+  -e HOME=/project/.home \
+  -e XDG_CACHE_HOME=/project/.cache \
+  -e WINEPREFIX=/project/.wine \
+  -v "$PWD":/project \
+  -w /project \
+  electronuserland/builder:wine \
+  bash -lc "mkdir -p /project/.home /project/.cache /project/.wine && npx -y pnpm@10.32.1 dist:win"
+```
+
+### Modo debug do desktop (login/API)
+
+Use este fluxo para diagnosticar falhas de login no executável:
+
+```bash
+cd front
+DESKTOP_API_URL=https://SEU_BACKEND pnpm desktop:debug
+```
+
+No modo debug, o Electron:
+
+- abre DevTools automaticamente;
+- loga cada proxy de `/api/*` no terminal;
+- exibe o backend final resolvido (`Desktop API URL`);
+- expõe um endpoint local de diagnóstico em `http://127.0.0.1:<porta>/__desktop_debug`.
+
+Se quiser rodar debug sem rebuild:
+
+```bash
+cd front
+DESKTOP_API_URL=https://SEU_BACKEND pnpm desktop:debug:run
+```
 
 ## Android com Capacitor
 
@@ -525,7 +594,12 @@ Os dados vêm **da API quando há conexão**; sem rede, a tela usa o que estiver
 | `pnpm build` | Gera o export estático em `out/` |
 | `pnpm lint` | Roda o ESLint |
 | `pnpm electron` | Abre o Electron apontando para dev ou build |
+| `pnpm build:static:desktop` | Gera build estático desktop com API em `/api` |
 | `pnpm build:desktop` | Build + Electron |
+| `pnpm desktop:debug` | Build + Electron em modo debug (logs de proxy/API) |
+| `pnpm desktop:debug:run` | Abre desktop em debug sem rebuild |
+| `pnpm dist:linux` | Gera executável Linux (`.AppImage`) |
+| `pnpm dist:win` | Gera executável/instalador Windows (`.exe`) |
 | `pnpm cap:sync` | Sincroniza com o Capacitor |
 | `pnpm android:emulator` | Roda no emulador Android |
 
@@ -596,12 +670,15 @@ Enums:
 - `NEXT_PUBLIC_API_URL` correto?
 - Porta `4000` liberada?
 - Em produção: `FRONT_URL` no backend inclui a URL do front?
+- No desktop: confirme se o Electron subiu com proxy `/api` e, se necessário, defina `DESKTOP_API_URL=https://URL_DO_BACKEND`.
 
 ### Erro no login
 
 - Seed foi executado?
 - `JWT_SECRET` definido?
 - Backend usando o `.env` correto?
+- No desktop: se abrir mas não logar, gere novamente com `pnpm build:desktop` (ou `pnpm dist:linux`) e backend correto em `DESKTOP_API_URL`.
+- Para diagnóstico rápido no desktop: rode `pnpm desktop:debug` e consulte `__desktop_debug`.
 
 ### E-mail de recuperação não funciona
 

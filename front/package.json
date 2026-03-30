@@ -8,8 +8,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "electron": "electron .",
-    "build:desktop": "next build && electron .",
+    "electron": "NODE_ENV=development env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-setuid-sandbox",
+    "build:static:desktop": "NODE_ENV=production NEXT_PUBLIC_API_URL=/api next build",
+    "build:desktop": "pnpm build:static:desktop && NODE_ENV=production env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-setuid-sandbox",
+    "desktop:debug": "pnpm build:static:desktop && DESKTOP_DEBUG=1 NODE_ENV=production env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-setuid-sandbox",
+    "desktop:debug:run": "DESKTOP_DEBUG=1 NODE_ENV=production env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-setuid-sandbox",
+    "dist:linux": "pnpm build:static:desktop && electron-builder --linux AppImage",
+    "dist:win": "pnpm build:static:desktop && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64",
     "android:emulator": "npx cap run android",
     "android:device": "npx cap run android",
     "cap:sync": "npx cap sync"
@@ -77,6 +82,7 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "electron": "^33.0.0",
+    "electron-builder": "^26.8.1",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",
@@ -86,5 +92,30 @@
     "appId": "com.caixatotal.app",
     "appName": "Caixa Total",
     "webDir": "out"
+  },
+  "build": {
+    "appId": "com.caixatotal.desktop",
+    "productName": "Caixa Total",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "electron/**/*",
+      "out/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "caixa-total-${version}-windows-${arch}.${ext}"
+    },
+    "artifactName": "caixa-total-${version}-${os}-${arch}.${ext}"
   }
 }

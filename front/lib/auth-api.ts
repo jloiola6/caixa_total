@@ -37,6 +37,33 @@ export type AuthUser = {
   store: { id: string; name: string; slug: string } | null;
 };
 
+async function parseJsonWithFallback(
+  res: Response,
+  fallbackMessage: string
+): Promise<Record<string, unknown>> {
+  const bodyText = await res.text();
+  let data: Record<string, unknown> = {};
+
+  if (bodyText) {
+    try {
+      data = JSON.parse(bodyText) as Record<string, unknown>;
+    } catch {
+      if (!res.ok) throw new Error(`${fallbackMessage} (HTTP ${res.status})`);
+      throw new Error("Resposta inválida do servidor");
+    }
+  }
+
+  if (!res.ok) {
+    const errorMessage =
+      typeof data.error === "string" && data.error.trim()
+        ? data.error
+        : `${fallbackMessage} (HTTP ${res.status})`;
+    throw new Error(errorMessage);
+  }
+
+  return data;
+}
+
 export async function login(
   email: string,
   password: string
@@ -46,9 +73,13 @@ export async function login(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falha no login");
-  return { token: data.token, user: data.user };
+  const data = await parseJsonWithFallback(res, "Falha no login");
+
+  if (typeof data.token !== "string" || !data.user) {
+    throw new Error("Resposta inválida do servidor");
+  }
+
+  return { token: data.token, user: data.user as AuthUser };
 }
 
 export async function forgotPassword(email: string): Promise<void> {
@@ -57,8 +88,7 @@ export async function forgotPassword(email: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falha ao enviar");
+  await parseJsonWithFallback(res, "Falha ao enviar");
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
@@ -67,8 +97,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, newPassword }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Falha ao redefinir senha");
+  await parseJsonWithFallback(res, "Falha ao redefinir senha");
 }
 
 export async function getMe(): Promise<AuthUser | null> {
