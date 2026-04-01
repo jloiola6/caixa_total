@@ -23,6 +23,7 @@ export interface Product {
   costCents: number | null
   category: ProductCategory
   imageUrl: string | null
+  type: string | null
   brand: string | null
   model: string | null
   size: string | null

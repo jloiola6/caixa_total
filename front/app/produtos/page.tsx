@@ -136,6 +136,7 @@ function ProductImage({ src, name }: { src: string | null; name: string }) {
 
 function productSubtitle(product: Product): string {
   const parts: string[] = []
+  if (product.type) parts.push(`Tipo: ${product.type}`)
   if (product.brand) parts.push(product.brand)
   if (product.model) parts.push(product.model)
   if (product.size) parts.push(`Tam: ${product.size}`)
@@ -296,7 +297,7 @@ export default function ProdutosPage() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome, SKU, marca..."
+            placeholder="Buscar por nome, SKU, tipo, marca..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-9"

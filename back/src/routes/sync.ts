@@ -18,6 +18,7 @@ type ProductPayload = {
   costCents?: number | null;
   category: string;
   imageUrl?: string | null;
+  type?: string | null;
   brand?: string | null;
   model?: string | null;
   size?: string | null;
@@ -151,6 +152,9 @@ syncRouter.post("/", async (req, res) => {
     }
 
     for (const p of products) {
+      const parsedCategory = toProductCategory(p.category);
+      const productType =
+        p.type ?? (parsedCategory === "controles" ? p.brand ?? null : null);
       await prisma.product.upsert({
         where: { id: p.id },
         create: {
@@ -162,8 +166,9 @@ syncRouter.post("/", async (req, res) => {
           stock: p.stock,
           priceCents: p.priceCents,
           costCents: p.costCents ?? null,
-          category: toProductCategory(p.category),
+          category: parsedCategory,
           imageUrl: p.imageUrl ?? null,
+          type: productType,
           brand: p.brand ?? null,
           model: p.model ?? null,
           size: p.size ?? null,
@@ -180,8 +185,9 @@ syncRouter.post("/", async (req, res) => {
           stock: p.stock,
           priceCents: p.priceCents,
           costCents: p.costCents ?? null,
-          category: toProductCategory(p.category),
+          category: parsedCategory,
           imageUrl: p.imageUrl ?? null,
+          type: productType,
           brand: p.brand ?? null,
           model: p.model ?? null,
           size: p.size ?? null,

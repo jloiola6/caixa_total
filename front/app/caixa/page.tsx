@@ -323,9 +323,9 @@ export default function CaixaPage() {
                           {product.name}
                         </p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          {product.brand && (
+                          {(product.type || product.brand) && (
                             <span className="text-xs text-muted-foreground">
-                              {product.brand}
+                              {product.type || product.brand}
                             </span>
                           )}
                           {product.sku && (

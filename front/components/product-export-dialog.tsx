@@ -28,6 +28,7 @@ type ProductColumnId =
   | "stock"
   | "price"
   | "cost"
+  | "type"
   | "brand"
   | "model"
   | "size"
@@ -52,6 +53,7 @@ const DEFAULT_COLUMNS: ProductExportColumn[] = [
   { id: "stock", label: "Estoque", selected: true },
   { id: "price", label: "Preco de Venda", selected: true },
   { id: "cost", label: "Custo", selected: true },
+  { id: "type", label: "Tipo", selected: true },
   { id: "brand", label: "Marca", selected: true },
   { id: "model", label: "Modelo", selected: true },
   { id: "size", label: "Tamanho", selected: true },
@@ -94,6 +96,8 @@ function getColumnValue(product: Product, columnId: ProductColumnId): string {
       return formatCurrency(product.priceCents)
     case "cost":
       return product.costCents == null ? "" : formatCurrency(product.costCents)
+    case "type":
+      return product.type ?? ""
     case "brand":
       return product.brand ?? ""
     case "model":

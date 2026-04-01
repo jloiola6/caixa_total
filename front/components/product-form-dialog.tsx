@@ -78,6 +78,7 @@ interface ProductFormDialogProps {
 }
 
 const CATEGORIES = Object.entries(PRODUCT_CATEGORY_LABELS) as [ProductCategory, string][]
+const CONTROL_TYPE_OPTIONS = ["Televisão", "Receptor", "Ar condicionado", "projetor"] as const
 
 export function ProductFormDialog({
   open,
@@ -94,6 +95,7 @@ export function ProductFormDialog({
   const [category, setCategory] = useState<ProductCategory>("diversos")
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [brand, setBrand] = useState("")
+  const [controlType, setControlType] = useState("")
   const [model, setModel] = useState("")
   const [size, setSize] = useState("")
   const [color, setColor] = useState("")
@@ -115,6 +117,7 @@ export function ProductFormDialog({
       setCategory(product.category || "diversos")
       setImageUrl(product.imageUrl || null)
       setBrand(product.brand || "")
+      setControlType(product.category === "controles" ? product.type || product.brand || "" : "")
       setModel(product.model || "")
       setSize(product.size || "")
       setColor(product.color || "")
@@ -131,6 +134,7 @@ export function ProductFormDialog({
       setCategory("diversos")
       setImageUrl(null)
       setBrand("")
+      setControlType("")
       setModel("")
       setSize("")
       setColor("")
@@ -219,7 +223,8 @@ export function ProductFormDialog({
       stock: isEditing ? product!.stock : stock,
       category,
       imageUrl,
-      brand: brand.trim() || null,
+      type: category === "controles" ? controlType.trim() || null : null,
+      brand: category === "controles" ? null : brand.trim() || null,
       model: model.trim() || null,
       size: size.trim() || null,
       color: color.trim() || null,
@@ -233,12 +238,16 @@ export function ProductFormDialog({
     syncToServer().catch(() => {})
   }
 
-  const showBrand = category === "roupas" || category === "tenis" || category === "controles"
+  const showBrand = category === "roupas" || category === "tenis"
+  const showControlType = category === "controles"
   const showModel = category === "tenis" || category === "controles" || category === "eletronicos"
   const showSize = category === "roupas" || category === "tenis"
   const showColor = category === "roupas" || category === "tenis"
   const showControlNumber = category === "controles"
   const showDescription = category === "eletronicos" || category === "diversos" || category === "controles"
+  const controlTypeOptions = controlType && !(CONTROL_TYPE_OPTIONS as readonly string[]).includes(controlType)
+    ? [controlType, ...CONTROL_TYPE_OPTIONS]
+    : CONTROL_TYPE_OPTIONS
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -332,8 +341,8 @@ export function ProductFormDialog({
             </Select>
           </div>
 
-          {/* Brand + Model */}
-          {(showBrand || showModel) && (
+          {/* Brand/Control Type + Model */}
+          {(showBrand || showControlType || showModel) && (
             <div className="grid grid-cols-2 gap-4">
               {showBrand && (
                 <div className="flex flex-col gap-2">
@@ -344,6 +353,26 @@ export function ProductFormDialog({
                     onChange={(e) => setBrand(e.target.value)}
                     placeholder="Ex: Nike, Samsung..."
                   />
+                </div>
+              )}
+              {showControlType && (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="prod-type">Tipo</Label>
+                  <Select
+                    value={controlType || undefined}
+                    onValueChange={setControlType}
+                  >
+                    <SelectTrigger id="prod-type">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {controlTypeOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
               {showModel && (

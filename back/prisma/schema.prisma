@@ -78,6 +78,7 @@ model Product {
   costCents     Int?
   category      ProductCategory
   imageUrl      String?
+  type          String?
   brand         String?
   model         String?
   size          String?

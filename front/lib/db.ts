@@ -276,6 +276,7 @@ export function getProducts(query?: string): Product[] {
         p.name.toLowerCase().includes(q) ||
         (p.sku && p.sku.toLowerCase().includes(q)) ||
         (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+        (p.type && p.type.toLowerCase().includes(q)) ||
         (p.brand && p.brand.toLowerCase().includes(q)) ||
         (p.model && p.model.toLowerCase().includes(q)) ||
         (p.controlNumber && p.controlNumber.toLowerCase().includes(q))
@@ -329,6 +330,7 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
     costCents: product.costCents ?? null,
     category: product.category,
     imageUrl: product.imageUrl ?? null,
+    type: product.type ?? null,
     brand: product.brand ?? null,
     model: product.model ?? null,
     size: product.size ?? null,
@@ -623,12 +625,19 @@ function migrateProducts() {
         ...products[i],
         category: "diversos",
         imageUrl: products[i].imageUrl ?? null,
+        type: products[i].type ?? null,
         brand: products[i].brand ?? null,
         model: products[i].model ?? null,
         size: products[i].size ?? null,
         color: products[i].color ?? null,
         description: products[i].description ?? null,
         controlNumber: products[i].controlNumber ?? null,
+      }
+      needsWrite = true
+    } else if (typeof products[i].type === "undefined") {
+      products[i] = {
+        ...products[i],
+        type: products[i].category === "controles" ? products[i].brand ?? null : null,
       }
       needsWrite = true
     }
