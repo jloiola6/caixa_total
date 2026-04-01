@@ -25,7 +25,7 @@ import { upsertProduct, getAllBarcodes } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
-import { ImagePlus, X, Shuffle, Printer } from "lucide-react"
+import { ImagePlus, X, Shuffle, Printer, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import JsBarcode from "jsbarcode"
 
@@ -79,6 +79,15 @@ interface ProductFormDialogProps {
 
 const CATEGORIES = Object.entries(PRODUCT_CATEGORY_LABELS) as [ProductCategory, string][]
 const CONTROL_TYPE_OPTIONS = ["Televisão", "Receptor", "Ar condicionado", "projetor"] as const
+type TennisSizeRow = { id: string; size: string; stock: number }
+
+function createTennisSizeRow(): TennisSizeRow {
+  const id =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return { id, size: "", stock: 0 }
+}
 
 export function ProductFormDialog({
   open,
@@ -101,6 +110,7 @@ export function ProductFormDialog({
   const [color, setColor] = useState("")
   const [description, setDescription] = useState("")
   const [controlNumber, setControlNumber] = useState("")
+  const [tennisSizes, setTennisSizes] = useState<TennisSizeRow[]>(() => [createTennisSizeRow()])
   const [barcodeSvg, setBarcodeSvg] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -123,6 +133,23 @@ export function ProductFormDialog({
       setColor(product.color || "")
       setDescription(product.description || "")
       setControlNumber(product.controlNumber || "")
+      if (product.category === "tenis" && product.tennisSizes && product.tennisSizes.length > 0) {
+        setTennisSizes(
+          product.tennisSizes.map((item) => ({
+            id: item.id,
+            size: item.number,
+            stock: item.stock,
+          }))
+        )
+      } else {
+        setTennisSizes([
+          {
+            id: createTennisSizeRow().id,
+            size: product.size || "",
+            stock: product.stock,
+          },
+        ])
+      }
       setBarcodeSvg(product.barcode ? renderBarcodeSvg(product.barcode) : null)
     } else {
       setName("")
@@ -140,9 +167,17 @@ export function ProductFormDialog({
       setColor("")
       setDescription("")
       setControlNumber("")
+      setTennisSizes([createTennisSizeRow()])
       setBarcodeSvg(null)
     }
   }, [product, open])
+
+  useEffect(() => {
+    if (isEditing) return
+    if (category === "tenis" && tennisSizes.length === 0) {
+      setTennisSizes([createTennisSizeRow()])
+    }
+  }, [category, isEditing, tennisSizes.length])
 
   function handleGenerateBarcode() {
     try {
@@ -213,6 +248,70 @@ export function ProductFormDialog({
       return
     }
 
+    if (category === "tenis") {
+      const normalized = tennisSizes
+        .map((row) => ({
+          id: row.id,
+          size: row.size.trim(),
+          stock: Number.isFinite(row.stock) ? Math.max(0, Math.floor(row.stock)) : 0,
+        }))
+        .filter((row) => row.size !== "")
+
+      if (normalized.length === 0) {
+        toast.error("Adicione ao menos uma numeracao para o tenis")
+        return
+      }
+
+      const seen = new Set<string>()
+      for (const row of normalized) {
+        const key = row.size.toLowerCase()
+        if (seen.has(key)) {
+          toast.error(`Numeracao duplicada: ${row.size}`)
+          return
+        }
+        seen.add(key)
+      }
+
+      const nowIso = new Date().toISOString()
+      upsertProduct({
+        id: product?.id,
+        name: name.trim(),
+        sku: sku.trim() || null,
+        barcode: barcode.trim() || null,
+        priceCents,
+        costCents: costCents > 0 ? costCents : null,
+        stock: normalized.reduce((sum, row) => sum + row.stock, 0),
+        category,
+        imageUrl,
+        type: null,
+        brand: brand.trim() || null,
+        model: model.trim() || null,
+        size: null,
+        color: color.trim() || null,
+        description: description.trim() || null,
+        controlNumber: null,
+        tennisSizes: normalized.map((row) => ({
+          id: row.id,
+          number: row.size,
+          stock: row.stock,
+          sku: null,
+          barcode: null,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        })),
+      })
+
+      toast.success(
+        isEditing
+          ? "Tenis atualizado com sucesso"
+          : `Tenis cadastrado com ${normalized.length} numeracao(oes)`
+      )
+      onOpenChange(false)
+      onSaved()
+      syncToServer().catch(() => {})
+      return
+    }
+
     upsertProduct({
       id: product?.id,
       name: name.trim(),
@@ -241,7 +340,8 @@ export function ProductFormDialog({
   const showBrand = category === "roupas" || category === "tenis"
   const showControlType = category === "controles"
   const showModel = category === "tenis" || category === "controles" || category === "eletronicos"
-  const showSize = category === "roupas" || category === "tenis"
+  const showSize = category === "roupas"
+  const showTennisSizesTable = category === "tenis"
   const showColor = category === "roupas" || category === "tenis"
   const showControlNumber = category === "controles"
   const showDescription = category === "eletronicos" || category === "diversos" || category === "controles"
@@ -356,7 +456,7 @@ export function ProductFormDialog({
                 </div>
               )}
               {showControlType && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 w-full">
                   <Label htmlFor="prod-type">Tipo</Label>
                   <Select
                     value={controlType || undefined}
@@ -399,7 +499,7 @@ export function ProductFormDialog({
                     id="prod-size"
                     value={size}
                     onChange={(e) => setSize(e.target.value)}
-                    placeholder={category === "tenis" ? "Ex: 42, 38..." : "Ex: P, M, G, GG..."}
+                    placeholder="Ex: P, M, G, GG..."
                   />
                 </div>
               )}
@@ -414,6 +514,85 @@ export function ProductFormDialog({
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Tennis Sizes (create flow) */}
+          {showTennisSizesTable && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <Label>Numeracoes e Estoque *</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() =>
+                    setTennisSizes((prev) => [...prev, createTennisSizeRow()])
+                  }
+                >
+                  <Plus className="size-3.5" />
+                  Adicionar
+                </Button>
+              </div>
+              <div className="rounded-md border border-border overflow-hidden">
+                <div className="grid grid-cols-[1fr_120px_44px] bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  <span>Numeracao</span>
+                  <span>Estoque</span>
+                  <span></span>
+                </div>
+                <div className="divide-y divide-border">
+                  {tennisSizes.map((row) => (
+                    <div
+                      key={row.id}
+                      className="grid grid-cols-[1fr_120px_44px] items-center gap-2 p-2"
+                    >
+                      <Input
+                        value={row.size}
+                        onChange={(e) =>
+                          setTennisSizes((prev) =>
+                            prev.map((item) =>
+                              item.id === row.id ? { ...item, size: e.target.value } : item
+                            )
+                          )
+                        }
+                        placeholder="Ex: 38, 39, 40..."
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        value={row.stock}
+                        onChange={(e) =>
+                          setTennisSizes((prev) =>
+                            prev.map((item) =>
+                              item.id === row.id
+                                ? { ...item, stock: Math.max(0, parseInt(e.target.value) || 0) }
+                                : item
+                            )
+                          )
+                        }
+                        placeholder="0"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-destructive hover:text-destructive"
+                        disabled={tennisSizes.length === 1}
+                        onClick={() =>
+                          setTennisSizes((prev) => {
+                            if (prev.length === 1) return prev
+                            return prev.filter((item) => item.id !== row.id)
+                          })
+                        }
+                        title="Remover numeracao"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -511,7 +690,7 @@ export function ProductFormDialog({
           </div>
 
           {/* Initial Stock (only on create) */}
-          {!isEditing && (
+          {!isEditing && category !== "tenis" && (
             <div className="flex flex-col gap-2">
               <Label htmlFor="prod-stock">Estoque Inicial</Label>
               <Input

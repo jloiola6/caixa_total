@@ -35,8 +35,8 @@ import {
 import { BarcodeScanner } from "@/components/barcode-scanner"
 import { CheckoutDialog } from "@/components/checkout-dialog"
 import {
-  getProducts,
-  getProductByBarcode,
+  getSellableProducts,
+  getSellableProductByBarcode,
   createSale,
 } from "@/lib/db"
 import { formatCurrency } from "@/lib/format"
@@ -74,7 +74,7 @@ export default function CaixaPage() {
         setSearchResults([])
         return
       }
-      const results = getProducts(value)
+      const results = getSellableProducts(value)
       setSearchResults(results)
     },
     []
@@ -88,7 +88,7 @@ export default function CaixaPage() {
       if (!value) return
 
       // Try exact barcode match first
-      const byBarcode = getProductByBarcode(value)
+      const byBarcode = getSellableProductByBarcode(value)
       if (byBarcode) {
         addToCart(byBarcode)
         setQuery("")
@@ -97,7 +97,7 @@ export default function CaixaPage() {
       }
 
       // If only one search result, add it
-      const results = getProducts(value)
+      const results = getSellableProducts(value)
       if (results.length === 1) {
         addToCart(results[0])
         setQuery("")
@@ -193,7 +193,7 @@ export default function CaixaPage() {
   }
 
   function handleBarcodeScanned(code: string) {
-    const product = getProductByBarcode(code)
+    const product = getSellableProductByBarcode(code)
     if (product) {
       addToCart(product)
     } else {

@@ -92,7 +92,15 @@ function buildProductFilterOptions(products: Product[]): ProductFilterOptions {
     categories,
     brands: uniqueFilterValues(products.map((p) => p.brand)),
     models: uniqueFilterValues(products.map((p) => p.model)),
-    sizes: uniqueFilterValues(products.map((p) => p.size)),
+    sizes: uniqueFilterValues(
+      products.flatMap((p) => {
+        const values: Array<string | null> = [p.size]
+        if (p.category === "tenis" && p.tennisSizes) {
+          values.push(...p.tennisSizes.map((size) => size.number))
+        }
+        return values
+      })
+    ),
     colors: uniqueFilterValues(products.map((p) => p.color)),
     controlNumbers: uniqueFilterValues(products.map((p) => p.controlNumber)),
   }
@@ -111,7 +119,18 @@ function matchesProductFilters(product: Product, filters: ProductFilters): boole
   }
   if (!matchesTextFilter(filters.brands, product.brand)) return false
   if (!matchesTextFilter(filters.models, product.model)) return false
-  if (!matchesTextFilter(filters.sizes, product.size)) return false
+  if (filters.sizes.length > 0) {
+    const productSizes = new Set<string>()
+    const normalizedSingleSize = normalizeFilterValue(product.size)
+    if (normalizedSingleSize) productSizes.add(normalizedSingleSize)
+    if (product.tennisSizes) {
+      for (const size of product.tennisSizes) {
+        const normalized = normalizeFilterValue(size.number)
+        if (normalized) productSizes.add(normalized)
+      }
+    }
+    if (!filters.sizes.some((selectedSize) => productSizes.has(selectedSize))) return false
+  }
   if (!matchesTextFilter(filters.colors, product.color)) return false
   if (!matchesTextFilter(filters.controlNumbers, product.controlNumber)) return false
   return true
@@ -139,7 +158,14 @@ function productSubtitle(product: Product): string {
   if (product.type) parts.push(`Tipo: ${product.type}`)
   if (product.brand) parts.push(product.brand)
   if (product.model) parts.push(product.model)
-  if (product.size) parts.push(`Tam: ${product.size}`)
+  if (product.category === "tenis" && product.tennisSizes && product.tennisSizes.length > 0) {
+    const orderedSizes = [...product.tennisSizes]
+      .map((size) => size.number)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }))
+    parts.push(`Tams: ${orderedSizes.join(", ")}`)
+  } else if (product.size) {
+    parts.push(`Tam: ${product.size}`)
+  }
   if (product.color) parts.push(product.color)
   if (product.controlNumber) parts.push(`#${product.controlNumber}`)
   return parts.join(" | ")

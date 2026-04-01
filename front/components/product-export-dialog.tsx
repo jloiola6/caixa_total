@@ -103,6 +103,12 @@ function getColumnValue(product: Product, columnId: ProductColumnId): string {
     case "model":
       return product.model ?? ""
     case "size":
+      if (product.category === "tenis" && product.tennisSizes) {
+        return product.tennisSizes
+          .map((size) => size.number)
+          .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }))
+          .join(", ")
+      }
       return product.size ?? ""
     case "color":
       return product.color ?? ""

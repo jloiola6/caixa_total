@@ -8,6 +8,7 @@ import type {
   PaymentSplit,
   StockLog,
   AppNotification,
+  TennisSize,
 } from "./types"
 
 // --------------- helpers ---------------
@@ -32,6 +33,64 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", {
 
 function formatCurrencyCents(cents: number): string {
   return CURRENCY_FORMATTER.format(cents / 100)
+}
+
+const TENNIS_VARIANT_SEPARATOR = "::"
+
+function legacyTennisSizeId(productId: string, size: string): string {
+  return `legacy_${productId}_${size.replace(/\s+/g, "_")}`
+}
+
+function normalizeTennisSizes(
+  tennisSizes: Product["tennisSizes"] | undefined,
+  nowIso: string
+): TennisSize[] | null {
+  if (!Array.isArray(tennisSizes)) return null
+
+  const seen = new Set<string>()
+  const normalized: TennisSize[] = []
+  for (const raw of tennisSizes) {
+    const number = (raw?.number ?? "").trim()
+    if (!number) continue
+    const id = (raw?.id ?? randomUUID()).trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+
+    normalized.push({
+      id,
+      number,
+      stock: Math.max(0, Number(raw?.stock ?? 0) || 0),
+      sku: (raw?.sku ?? "").trim() || null,
+      barcode: (raw?.barcode ?? "").trim() || null,
+      createdAt: raw?.createdAt ?? nowIso,
+      updatedAt: raw?.updatedAt ?? nowIso,
+    })
+  }
+
+  return normalized
+}
+
+function buildSellableTennisVariant(product: Product, tennisSize: TennisSize): Product {
+  const baseSku = product.sku ? `${product.sku}-${tennisSize.number}` : null
+  return {
+    ...product,
+    id: `${product.id}${TENNIS_VARIANT_SEPARATOR}${tennisSize.id}`,
+    name: `${product.name} (Tam ${tennisSize.number})`,
+    sku: tennisSize.sku ?? baseSku,
+    barcode: tennisSize.barcode ?? null,
+    size: tennisSize.number,
+    stock: tennisSize.stock,
+    tennisSizes: null,
+  }
+}
+
+function parseTennisVariantId(id: string): { productId: string; tennisSizeId: string } | null {
+  const splitIndex = id.indexOf(TENNIS_VARIANT_SEPARATOR)
+  if (splitIndex <= 0) return null
+  const productId = id.slice(0, splitIndex)
+  const tennisSizeId = id.slice(splitIndex + TENNIS_VARIANT_SEPARATOR.length)
+  if (!productId || !tennisSizeId) return null
+  return { productId, tennisSizeId }
 }
 
 const OFFLINE_DB_NAME = "caixatotal_offline_db"
@@ -279,7 +338,15 @@ export function getProducts(query?: string): Product[] {
         (p.type && p.type.toLowerCase().includes(q)) ||
         (p.brand && p.brand.toLowerCase().includes(q)) ||
         (p.model && p.model.toLowerCase().includes(q)) ||
-        (p.controlNumber && p.controlNumber.toLowerCase().includes(q))
+        (p.size && p.size.toLowerCase().includes(q)) ||
+        (p.controlNumber && p.controlNumber.toLowerCase().includes(q)) ||
+        (p.tennisSizes &&
+          p.tennisSizes.some(
+            (size) =>
+              size.number.toLowerCase().includes(q) ||
+              (size.sku && size.sku.toLowerCase().includes(q)) ||
+              (size.barcode && size.barcode.toLowerCase().includes(q))
+          ))
     )
     .sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -289,17 +356,68 @@ export function getProductById(id: string): Product | undefined {
 }
 
 export function getProductByBarcode(barcode: string): Product | undefined {
-  return read<Product>(getProductsKey()).find(
-    (p) => p.barcode && p.barcode === barcode
-  )
+  const products = read<Product>(getProductsKey())
+
+  for (const product of products) {
+    if (product.barcode && product.barcode === barcode) return product
+    if (product.category !== "tenis" || !product.tennisSizes) continue
+    const tennisSize = product.tennisSizes.find((size) => size.barcode && size.barcode === barcode)
+    if (!tennisSize) continue
+    return buildSellableTennisVariant(product, tennisSize)
+  }
+  return undefined
 }
 
 export function getAllBarcodes(): Set<string> {
-  return new Set(
-    read<Product>(getProductsKey())
-      .map((p) => p.barcode)
-      .filter((b): b is string => b !== null && b !== "")
-  )
+  const all = new Set<string>()
+  for (const product of read<Product>(getProductsKey())) {
+    if (product.barcode) all.add(product.barcode)
+    if (product.tennisSizes) {
+      for (const size of product.tennisSizes) {
+        if (size.barcode) all.add(size.barcode)
+      }
+    }
+  }
+  return all
+}
+
+export function getSellableProducts(query?: string): Product[] {
+  const products = getProducts(query)
+  const flattened: Product[] = []
+
+  for (const product of products) {
+    if (product.category === "tenis" && product.tennisSizes && product.tennisSizes.length > 0) {
+      for (const tennisSize of product.tennisSizes) {
+        flattened.push(buildSellableTennisVariant(product, tennisSize))
+      }
+      continue
+    }
+    flattened.push(product)
+  }
+
+  return flattened.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function getSellableProductByBarcode(barcode: string): Product | undefined {
+  const products = getProducts()
+  for (const product of products) {
+    if (product.category !== "tenis") {
+      if (product.barcode && product.barcode === barcode) return product
+      continue
+    }
+
+    if (product.tennisSizes) {
+      const bySizeBarcode = product.tennisSizes.find(
+        (size) => size.barcode && size.barcode === barcode
+      )
+      if (bySizeBarcode) return buildSellableTennisVariant(product, bySizeBarcode)
+
+      if (product.tennisSizes.length === 1 && product.barcode === barcode) {
+        return buildSellableTennisVariant(product, product.tennisSizes[0])
+      }
+    }
+  }
+  return undefined
 }
 
 export function upsertProduct(product: Partial<Product> & { name: string; priceCents: number; category: Product["category"] }): Product {
@@ -309,10 +427,23 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
   const existing = product.id ? products.find((p) => p.id === product.id) : null
 
   if (existing) {
-    const updated: Product = {
+    const updatedBase: Product = {
       ...existing,
       ...product,
       updatedAt: now,
+    }
+    const normalizedSizes =
+      updatedBase.category === "tenis"
+        ? normalizeTennisSizes(updatedBase.tennisSizes, now)
+        : null
+    const updated: Product = {
+      ...updatedBase,
+      stock:
+        updatedBase.category === "tenis"
+          ? (normalizedSizes ?? []).reduce((sum, size) => sum + size.stock, 0)
+          : updatedBase.stock,
+      size: updatedBase.category === "tenis" ? null : updatedBase.size ?? null,
+      tennisSizes: normalizedSizes,
     }
     const idx = products.findIndex((p) => p.id === existing.id)
     products[idx] = updated
@@ -320,12 +451,20 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
     return updated
   }
 
+  const normalizedNewSizes =
+    product.category === "tenis"
+      ? normalizeTennisSizes(product.tennisSizes, now)
+      : null
+
   const newProduct: Product = {
     id: randomUUID(),
     name: product.name,
     sku: product.sku ?? null,
     barcode: product.barcode ?? null,
-    stock: product.stock ?? 0,
+    stock:
+      product.category === "tenis"
+        ? (normalizedNewSizes ?? []).reduce((sum, size) => sum + size.stock, 0)
+        : product.stock ?? 0,
     priceCents: product.priceCents,
     costCents: product.costCents ?? null,
     category: product.category,
@@ -333,10 +472,11 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
     type: product.type ?? null,
     brand: product.brand ?? null,
     model: product.model ?? null,
-    size: product.size ?? null,
+    size: product.category === "tenis" ? null : product.size ?? null,
     color: product.color ?? null,
     description: product.description ?? null,
     controlNumber: product.controlNumber ?? null,
+    tennisSizes: normalizedNewSizes,
     createdAt: now,
     updatedAt: now,
   }
@@ -353,18 +493,62 @@ export function deleteProduct(id: string): boolean {
   return true
 }
 
-export function adjustStock(productId: string, delta: number, reason?: string | null): Product | null {
+export function adjustStock(
+  productId: string,
+  delta: number,
+  reason?: string | null,
+  tennisSizeId?: string | null
+): Product | null {
   const products = read<Product>(getProductsKey())
   const idx = products.findIndex((p) => p.id === productId)
   if (idx === -1) return null
 
-  const newStock = products[idx].stock + delta
+  const now = new Date().toISOString()
+  const current = products[idx]
+
+  if (current.category === "tenis" && current.tennisSizes) {
+    if (!tennisSizeId) return null
+    const sizeIdx = current.tennisSizes.findIndex((size) => size.id === tennisSizeId)
+    if (sizeIdx === -1) return null
+
+    const size = current.tennisSizes[sizeIdx]
+    const newSizeStock = size.stock + delta
+    if (newSizeStock < 0) return null
+
+    const nextSizes = current.tennisSizes.map((item, index) =>
+      index === sizeIdx ? { ...item, stock: newSizeStock, updatedAt: now } : item
+    )
+    const nextStock = nextSizes.reduce((sum, item) => sum + item.stock, 0)
+    products[idx] = {
+      ...current,
+      tennisSizes: nextSizes,
+      stock: nextStock,
+      updatedAt: now,
+    }
+
+    write(getProductsKey(), products)
+
+    const log: StockLog = {
+      id: randomUUID(),
+      productId,
+      productName: `${products[idx].name} Tam ${size.number}`,
+      delta,
+      reason: reason?.trim() || null,
+      createdAt: now,
+    }
+    const logs = read<StockLog>(getStockLogsKey())
+    logs.push(log)
+    write(getStockLogsKey(), logs)
+    return products[idx]
+  }
+
+  const newStock = current.stock + delta
   if (newStock < 0) return null
 
   products[idx] = {
-    ...products[idx],
+    ...current,
     stock: newStock,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
   }
   write(getProductsKey(), products)
 
@@ -375,7 +559,7 @@ export function adjustStock(productId: string, delta: number, reason?: string | 
     productName: products[idx].name,
     delta,
     reason: reason?.trim() || null,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   }
   const logs = read<StockLog>(getStockLogsKey())
   logs.push(log)
@@ -475,17 +659,56 @@ export function createSale(
 
   // Validate stock
   for (const item of items) {
+    const tennisVariant = parseTennisVariantId(item.product.id)
+    if (tennisVariant) {
+      const parent = products.find((pr) => pr.id === tennisVariant.productId)
+      if (!parent || parent.category !== "tenis" || !parent.tennisSizes) return null
+      const size = parent.tennisSizes.find((ts) => ts.id === tennisVariant.tennisSizeId)
+      if (!size || size.stock < item.qty) return null
+      continue
+    }
+
     const p = products.find((pr) => pr.id === item.product.id)
     if (!p || p.stock < item.qty) return null
   }
 
   // Deduct stock
   for (const item of items) {
+    const now = new Date().toISOString()
+    const tennisVariant = parseTennisVariantId(item.product.id)
+    if (tennisVariant) {
+      const parentIdx = products.findIndex((pr) => pr.id === tennisVariant.productId)
+      if (parentIdx === -1) return null
+      const parent = products[parentIdx]
+      if (parent.category !== "tenis" || !parent.tennisSizes) return null
+
+      const sizeIdx = parent.tennisSizes.findIndex((ts) => ts.id === tennisVariant.tennisSizeId)
+      if (sizeIdx === -1) return null
+      const size = parent.tennisSizes[sizeIdx]
+      if (size.stock < item.qty) return null
+
+      const nextSizes = parent.tennisSizes.map((ts, index) =>
+        index === sizeIdx
+          ? { ...ts, stock: ts.stock - item.qty, updatedAt: now }
+          : ts
+      )
+      const totalStock = nextSizes.reduce((sum, ts) => sum + ts.stock, 0)
+
+      products[parentIdx] = {
+        ...parent,
+        tennisSizes: nextSizes,
+        stock: totalStock,
+        updatedAt: now,
+      }
+      continue
+    }
+
     const idx = products.findIndex((pr) => pr.id === item.product.id)
+    if (idx === -1) return null
     products[idx] = {
       ...products[idx],
       stock: products[idx].stock - item.qty,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
     }
   }
   write(getProductsKey(), products)
@@ -620,6 +843,7 @@ function migrateProducts() {
   const products = read<Product>(getProductsKey())
   let needsWrite = false
   for (let i = 0; i < products.length; i++) {
+    const now = new Date().toISOString()
     if (!products[i].category) {
       products[i] = {
         ...products[i],
@@ -632,12 +856,73 @@ function migrateProducts() {
         color: products[i].color ?? null,
         description: products[i].description ?? null,
         controlNumber: products[i].controlNumber ?? null,
+        tennisSizes: products[i].tennisSizes ?? null,
       }
       needsWrite = true
-    } else if (typeof products[i].type === "undefined") {
+    } else if (
+      typeof products[i].type === "undefined" ||
+      typeof products[i].tennisSizes === "undefined"
+    ) {
       products[i] = {
         ...products[i],
         type: products[i].category === "controles" ? products[i].brand ?? null : null,
+        tennisSizes: products[i].tennisSizes ?? null,
+      }
+      needsWrite = true
+    }
+
+    if (products[i].category === "tenis") {
+      let normalized = normalizeTennisSizes(products[i].tennisSizes, now)
+      const currentSize = products[i].size
+      if ((!normalized || normalized.length === 0) && currentSize) {
+        normalized = [
+          {
+            id: legacyTennisSizeId(products[i].id, currentSize),
+            number: currentSize,
+            stock: Math.max(0, products[i].stock),
+            sku: products[i].sku ?? null,
+            barcode: products[i].barcode ?? null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]
+        needsWrite = true
+      } else if ((!normalized || normalized.length === 0) && products[i].stock > 0) {
+        const fallbackSize = "U"
+        normalized = [
+          {
+            id: legacyTennisSizeId(products[i].id, fallbackSize),
+            number: fallbackSize,
+            stock: Math.max(0, products[i].stock),
+            sku: products[i].sku ?? null,
+            barcode: products[i].barcode ?? null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]
+        needsWrite = true
+      }
+
+      const sumStock = (normalized ?? []).reduce((sum, size) => sum + size.stock, 0)
+      const normalizedAsJson = JSON.stringify(normalized ?? [])
+      const currentAsJson = JSON.stringify(products[i].tennisSizes ?? [])
+      if (
+        products[i].size !== null ||
+        products[i].stock !== sumStock ||
+        currentAsJson !== normalizedAsJson
+      ) {
+        products[i] = {
+          ...products[i],
+          size: null,
+          stock: sumStock,
+          tennisSizes: normalized ?? [],
+        }
+        needsWrite = true
+      }
+    } else if (products[i].tennisSizes !== null) {
+      products[i] = {
+        ...products[i],
+        tennisSizes: null,
       }
       needsWrite = true
     }

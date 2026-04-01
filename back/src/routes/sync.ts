@@ -25,6 +25,13 @@ type ProductPayload = {
   color?: string | null;
   description?: string | null;
   controlNumber?: string | null;
+  tennisSizes?: {
+    id?: string;
+    number?: string | null;
+    stock?: number | null;
+    sku?: string | null;
+    barcode?: string | null;
+  }[];
   createdAt: string;
   updatedAt: string;
 };
@@ -87,6 +94,52 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", {
 function buildSaleNotificationMessage(totalCents: number, itemsCount: number): string {
   const itemsLabel = itemsCount === 1 ? "1 item" : `${itemsCount} itens`;
   return `${itemsLabel} · Total ${CURRENCY_FORMATTER.format(totalCents / 100)}`;
+}
+
+function normalizeTennisSizes(
+  payload: ProductPayload
+): Array<{ id: string; number: string; stock: number; sku: string | null; barcode: string | null }> {
+  const sizesFromPayload = Array.isArray(payload.tennisSizes) ? payload.tennisSizes : [];
+  const fallbackLegacySize =
+    (payload.size ?? "").trim() !== ""
+      ? [
+          {
+            id: `legacy_${payload.id}_${(payload.size ?? "").trim()}`,
+            number: (payload.size ?? "").trim(),
+            stock: payload.stock,
+            sku: payload.sku ?? null,
+            barcode: payload.barcode ?? null,
+          },
+        ]
+      : [];
+
+  const source = sizesFromPayload.length > 0 ? sizesFromPayload : fallbackLegacySize;
+  const seen = new Set<string>();
+  const normalized: Array<{
+    id: string;
+    number: string;
+    stock: number;
+    sku: string | null;
+    barcode: string | null;
+  }> = [];
+
+  for (const raw of source) {
+    const number = (raw.number ?? "").trim();
+    if (!number) continue;
+    const id = (raw.id ?? crypto.randomUUID()).trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+
+    normalized.push({
+      id,
+      number,
+      stock: Math.max(0, Number(raw.stock ?? 0) || 0),
+      sku: (raw.sku ?? "").trim() || null,
+      barcode: (raw.barcode ?? "").trim() || null,
+    });
+  }
+
+  return normalized;
 }
 
 syncRouter.post("/", async (req, res) => {
@@ -155,6 +208,14 @@ syncRouter.post("/", async (req, res) => {
       const parsedCategory = toProductCategory(p.category);
       const productType =
         p.type ?? (parsedCategory === "controles" ? p.brand ?? null : null);
+      const tennisSizes =
+        parsedCategory === "tenis" ? normalizeTennisSizes(p) : [];
+      const resolvedStock =
+        parsedCategory === "tenis"
+          ? (tennisSizes.length > 0
+              ? tennisSizes.reduce((sum, size) => sum + size.stock, 0)
+              : p.stock)
+          : p.stock;
       await prisma.product.upsert({
         where: { id: p.id },
         create: {
@@ -163,7 +224,7 @@ syncRouter.post("/", async (req, res) => {
           name: p.name,
           sku: p.sku ?? null,
           barcode: p.barcode ?? null,
-          stock: p.stock,
+          stock: resolvedStock,
           priceCents: p.priceCents,
           costCents: p.costCents ?? null,
           category: parsedCategory,
@@ -171,7 +232,7 @@ syncRouter.post("/", async (req, res) => {
           type: productType,
           brand: p.brand ?? null,
           model: p.model ?? null,
-          size: p.size ?? null,
+          size: parsedCategory === "tenis" ? null : p.size ?? null,
           color: p.color ?? null,
           description: p.description ?? null,
           controlNumber: p.controlNumber ?? null,
@@ -182,7 +243,7 @@ syncRouter.post("/", async (req, res) => {
           name: p.name,
           sku: p.sku ?? null,
           barcode: p.barcode ?? null,
-          stock: p.stock,
+          stock: resolvedStock,
           priceCents: p.priceCents,
           costCents: p.costCents ?? null,
           category: parsedCategory,
@@ -190,13 +251,50 @@ syncRouter.post("/", async (req, res) => {
           type: productType,
           brand: p.brand ?? null,
           model: p.model ?? null,
-          size: p.size ?? null,
+          size: parsedCategory === "tenis" ? null : p.size ?? null,
           color: p.color ?? null,
           description: p.description ?? null,
           controlNumber: p.controlNumber ?? null,
           updatedAt: now,
         },
       });
+
+      if (parsedCategory === "tenis") {
+        await prisma.tennisSize.deleteMany({
+          where: {
+            productId: p.id,
+            ...(tennisSizes.length > 0
+              ? { id: { notIn: tennisSizes.map((size) => size.id) } }
+              : {}),
+          },
+        });
+
+        for (const size of tennisSizes) {
+          await prisma.tennisSize.upsert({
+            where: { id: size.id },
+            create: {
+              id: size.id,
+              productId: p.id,
+              number: size.number,
+              stock: size.stock,
+              sku: size.sku,
+              barcode: size.barcode,
+              createdAt: new Date(p.createdAt),
+              updatedAt: new Date(p.updatedAt),
+            },
+            update: {
+              productId: p.id,
+              number: size.number,
+              stock: size.stock,
+              sku: size.sku,
+              barcode: size.barcode,
+              updatedAt: now,
+            },
+          });
+        }
+      } else {
+        await prisma.tennisSize.deleteMany({ where: { productId: p.id } });
+      }
     }
 
     for (const s of sales) {
@@ -325,7 +423,10 @@ syncRouter.get("/", async (req, res) => {
     const storeFilter = { storeId };
 
     const [products, sales, saleItems, salePayments, stockLogs] = await Promise.all([
-      prisma.product.findMany({ where: { ...storeFilter, updatedAt: { gt: sinceDate } } }),
+      prisma.product.findMany({
+        where: { ...storeFilter, updatedAt: { gt: sinceDate } },
+        include: { tennisSizes: true },
+      }),
       prisma.sale.findMany({
         where: { ...storeFilter, updatedAt: { gt: sinceDate } },
         include: { items: true, payments: true },
@@ -354,6 +455,11 @@ syncRouter.get("/", async (req, res) => {
     res.status(200).json({
       products: products.map((p) => ({
         ...p,
+        tennisSizes: p.tennisSizes.map((size) => ({
+          ...size,
+          createdAt: size.createdAt.toISOString(),
+          updatedAt: size.updatedAt.toISOString(),
+        })),
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
       })),

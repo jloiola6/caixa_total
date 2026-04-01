@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { adjustStock } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
 import type { Product } from "@/lib/types"
@@ -33,6 +40,21 @@ export function StockAdjustDialog({
 }: StockAdjustDialogProps) {
   const [delta, setDelta] = useState("")
   const [reason, setReason] = useState("")
+  const [selectedTennisSizeId, setSelectedTennisSizeId] = useState("")
+
+  const tennisSizeOptions = useMemo(
+    () => (product?.category === "tenis" ? product.tennisSizes ?? [] : []),
+    [product]
+  )
+
+  useEffect(() => {
+    if (!open) return
+    if (tennisSizeOptions.length > 0) {
+      setSelectedTennisSizeId((prev) => prev || tennisSizeOptions[0].id)
+    } else {
+      setSelectedTennisSizeId("")
+    }
+  }, [open, tennisSizeOptions])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -44,14 +66,25 @@ export function StockAdjustDialog({
       return
     }
 
-    const result = adjustStock(product.id, value, reason || null)
+    const result = adjustStock(
+      product.id,
+      value,
+      reason || null,
+      product.category === "tenis" ? selectedTennisSizeId : null
+    )
     if (!result) {
       toast.error("Estoque nao pode ficar negativo")
       return
     }
 
+    const selectedLabel =
+      product.category === "tenis"
+        ? tennisSizeOptions.find((size) => size.id === selectedTennisSizeId)?.number
+        : null
     toast.success(
-      `Estoque ${value > 0 ? "acrescido" : "reduzido"} em ${Math.abs(value)} unidade(s)`
+      `Estoque ${value > 0 ? "acrescido" : "reduzido"} em ${Math.abs(value)} unidade(s)${
+        selectedLabel ? ` (Tam ${selectedLabel})` : ""
+      }`
     )
     setDelta("")
     setReason("")
@@ -63,13 +96,16 @@ export function StockAdjustDialog({
   function handleClose() {
     setDelta("")
     setReason("")
+    setSelectedTennisSizeId("")
     onOpenChange(false)
   }
 
   if (!product) return null
 
   const parsedDelta = parseInt(delta, 10) || 0
-  const newStock = product.stock + parsedDelta
+  const selectedTennisSize = tennisSizeOptions.find((size) => size.id === selectedTennisSizeId) ?? null
+  const currentStock = selectedTennisSize ? selectedTennisSize.stock : product.stock
+  const newStock = currentStock + parsedDelta
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,10 +115,33 @@ export function StockAdjustDialog({
           <DialogDescription>{product.name}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {product.category === "tenis" && tennisSizeOptions.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="stock-size">Numeracao</Label>
+              <Select value={selectedTennisSizeId} onValueChange={setSelectedTennisSizeId}>
+                <SelectTrigger id="stock-size">
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tennisSizeOptions.map((size) => (
+                    <SelectItem key={size.id} value={size.id}>
+                      {`Tam ${size.number} (Estoque: ${size.stock})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Estoque total do modelo: {product.stock}
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between rounded-md bg-muted px-4 py-3">
-            <span className="text-sm text-muted-foreground">Estoque atual</span>
+            <span className="text-sm text-muted-foreground">
+              Estoque atual{selectedTennisSize ? ` (Tam ${selectedTennisSize.number})` : ""}
+            </span>
             <span className="text-lg font-semibold text-foreground">
-              {product.stock}
+              {currentStock}
             </span>
           </div>
 
@@ -137,7 +196,13 @@ export function StockAdjustDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={newStock < 0}>
+            <Button
+              type="submit"
+              disabled={
+                newStock < 0 ||
+                (product.category === "tenis" && tennisSizeOptions.length > 0 && !selectedTennisSizeId)
+              }
+            >
               Confirmar
             </Button>
           </DialogFooter>

@@ -30,6 +30,17 @@ export interface Product {
   color: string | null
   description: string | null
   controlNumber: string | null
+  tennisSizes: TennisSize[] | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TennisSize {
+  id: string
+  number: string
+  stock: number
+  sku: string | null
+  barcode: string | null
   createdAt: string
   updatedAt: string
 }
