@@ -236,6 +236,12 @@ export function ProductFormDialog({
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
+  function handleZeroPrefixedNumberFocus(e: React.FocusEvent<HTMLInputElement>) {
+    if (e.target.value === "0") {
+      e.target.select()
+    }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
@@ -562,6 +568,7 @@ export function ProductFormDialog({
                         type="number"
                         min={0}
                         value={row.stock}
+                        onFocus={handleZeroPrefixedNumberFocus}
                         onChange={(e) =>
                           setTennisSizes((prev) =>
                             prev.map((item) =>
@@ -698,6 +705,7 @@ export function ProductFormDialog({
                 type="number"
                 min={0}
                 value={stock}
+                onFocus={handleZeroPrefixedNumberFocus}
                 onChange={(e) => setStock(parseInt(e.target.value) || 0)}
                 placeholder="0"
               />
