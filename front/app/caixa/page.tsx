@@ -159,12 +159,18 @@ export default function CaixaPage() {
     setCheckoutOpen(true)
   }
 
-  function confirmSale(payments: PaymentSplit[], customerName: string | null, customerPhone: string | null) {
+  function confirmSale(
+    payments: PaymentSplit[],
+    customerName: string | null,
+    customerPhone: string | null,
+    lineTotalOverridesCents: Record<string, number>
+  ) {
     const result = createSale({
       items: cart,
       payments,
       customerName,
       customerPhone,
+      lineTotalOverridesCents,
     })
     if (!result) {
       toast.error("Erro ao registrar venda. Verifique o estoque.")

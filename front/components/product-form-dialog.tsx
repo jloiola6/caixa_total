@@ -116,6 +116,25 @@ export function ProductFormDialog({
 
   const isEditing = !!product
 
+  function generateBarcodeForForm(showToastFeedback = false): boolean {
+    try {
+      const existing = getAllBarcodes()
+      if (product?.barcode) existing.delete(product.barcode)
+      const newBarcode = generateEAN13(existing)
+      setBarcode(newBarcode)
+      setBarcodeSvg(renderBarcodeSvg(newBarcode))
+      if (showToastFeedback) {
+        toast.success("Código de barras gerado")
+      }
+      return true
+    } catch {
+      if (showToastFeedback) {
+        toast.error("Erro ao gerar código de barras")
+      }
+      return false
+    }
+  }
+
   useEffect(() => {
     if (product) {
       setName(product.name)
@@ -168,7 +187,16 @@ export function ProductFormDialog({
       setDescription("")
       setControlNumber("")
       setTennisSizes([createTennisSizeRow()])
-      setBarcodeSvg(null)
+      if (open) {
+        const generated = generateBarcodeForForm(false)
+        if (!generated) {
+          setBarcode("")
+          setBarcodeSvg(null)
+        }
+      } else {
+        setBarcode("")
+        setBarcodeSvg(null)
+      }
     }
   }, [product, open])
 
@@ -180,16 +208,7 @@ export function ProductFormDialog({
   }, [category, isEditing, tennisSizes.length])
 
   function handleGenerateBarcode() {
-    try {
-      const existing = getAllBarcodes()
-      if (product?.barcode) existing.delete(product.barcode)
-      const newBarcode = generateEAN13(existing)
-      setBarcode(newBarcode)
-      setBarcodeSvg(renderBarcodeSvg(newBarcode))
-      toast.success("Código de barras gerado")
-    } catch {
-      toast.error("Erro ao gerar código de barras")
-    }
+    generateBarcodeForForm(true)
   }
 
   function handlePrintBarcode() {

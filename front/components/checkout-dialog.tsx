@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Plus, Trash2, CreditCard, Banknote, Landmark, HandCoins } from "lucide-react"
 import {
   Dialog,
@@ -38,7 +38,12 @@ interface CheckoutDialogProps {
   onOpenChange: (open: boolean) => void
   cart: CartItem[]
   cartTotal: number
-  onConfirm: (payments: PaymentSplit[], customerName: string | null, customerPhone: string | null) => void
+  onConfirm: (
+    payments: PaymentSplit[],
+    customerName: string | null,
+    customerPhone: string | null,
+    lineTotalOverridesCents: Record<string, number>
+  ) => void
 }
 
 export function CheckoutDialog({
@@ -51,15 +56,49 @@ export function CheckoutDialog({
   const [payments, setPayments] = useState<{ method: PaymentMethod; amountCents: number }[]>([
     { method: "dinheiro", amountCents: 0 },
   ])
+  const [lineTotalsByProductId, setLineTotalsByProductId] = useState<Record<string, number>>({})
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
+
+  useEffect(() => {
+    if (!open) {
+      setLineTotalsByProductId({})
+      return
+    }
+    setLineTotalsByProductId(
+      Object.fromEntries(
+        cart.map((item) => [item.product.id, item.product.priceCents * item.qty])
+      )
+    )
+  }, [cart, open])
+
+  const effectiveCartTotal = useMemo(
+    () =>
+      cart.reduce((sum, item) => {
+        const fallback = item.product.priceCents * item.qty
+        const maybeAdjusted = lineTotalsByProductId[item.product.id]
+        const lineTotal =
+          typeof maybeAdjusted === "number" && Number.isFinite(maybeAdjusted)
+            ? Math.max(0, Math.floor(maybeAdjusted))
+            : fallback
+        return sum + lineTotal
+      }, 0),
+    [cart, lineTotalsByProductId]
+  )
 
   const totalAssigned = useMemo(
     () => payments.reduce((sum, p) => sum + p.amountCents, 0),
     [payments]
   )
 
-  const remaining = cartTotal - totalAssigned
+  const remaining = effectiveCartTotal - totalAssigned
+
+  function updateLineTotal(productId: string, amountCents: number) {
+    setLineTotalsByProductId((prev) => ({
+      ...prev,
+      [productId]: Math.max(0, Math.floor(amountCents)),
+    }))
+  }
 
   function addPayment() {
     setPayments((prev) => [...prev, { method: "dinheiro", amountCents: 0 }])
@@ -86,25 +125,39 @@ export function CheckoutDialog({
       (sum, p, i) => (i === index ? sum : sum + p.amountCents),
       0
     )
-    const fillAmount = cartTotal - otherTotal
+    const fillAmount = effectiveCartTotal - otherTotal
     if (fillAmount > 0) {
       updatePaymentAmount(index, fillAmount)
     }
   }
 
   function handleSinglePayment(method: PaymentMethod) {
-    setPayments([{ method, amountCents: cartTotal }])
+    setPayments([{ method, amountCents: effectiveCartTotal }])
   }
 
   function handleConfirm() {
     const validPayments = payments.filter((p) => p.amountCents > 0)
+    const lineTotalOverridesCents = cart.reduce<Record<string, number>>((acc, item) => {
+      const defaultLineTotal = item.product.priceCents * item.qty
+      const adjusted = lineTotalsByProductId[item.product.id]
+      if (
+        typeof adjusted === "number" &&
+        Number.isFinite(adjusted) &&
+        Math.max(0, Math.floor(adjusted)) !== defaultLineTotal
+      ) {
+        acc[item.product.id] = Math.max(0, Math.floor(adjusted))
+      }
+      return acc
+    }, {})
     onConfirm(
       validPayments,
       customerName.trim() || null,
-      customerPhone.trim() || null
+      customerPhone.trim() || null,
+      lineTotalOverridesCents
     )
     // Reset state
     setPayments([{ method: "dinheiro", amountCents: 0 }])
+    setLineTotalsByProductId({})
     setCustomerName("")
     setCustomerPhone("")
   }
@@ -112,6 +165,7 @@ export function CheckoutDialog({
   function handleOpenChange(open: boolean) {
     if (!open) {
       setPayments([{ method: "dinheiro", amountCents: 0 }])
+      setLineTotalsByProductId({})
       setCustomerName("")
       setCustomerPhone("")
     }
@@ -119,7 +173,8 @@ export function CheckoutDialog({
   }
 
   const cartItemsCount = cart.reduce((sum, item) => sum + item.qty, 0)
-  const canConfirm = totalAssigned === cartTotal && cartTotal > 0
+  const canConfirm = totalAssigned === effectiveCartTotal && effectiveCartTotal > 0
+  const adjustmentCents = effectiveCartTotal - cartTotal
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -127,25 +182,46 @@ export function CheckoutDialog({
         <DialogHeader>
           <DialogTitle>Finalizar Venda</DialogTitle>
           <DialogDescription>
-            {`${cartItemsCount} item(ns) - Total: ${formatCurrency(cartTotal)}`}
+            {`${cartItemsCount} item(ns) - Total: ${formatCurrency(effectiveCartTotal)}`}
           </DialogDescription>
         </DialogHeader>
 
         {/* Cart summary */}
-        <div className="flex flex-col gap-1 text-sm max-h-32 overflow-auto rounded-md bg-muted p-3">
+        <div className="flex flex-col gap-2 text-sm max-h-48 overflow-auto rounded-md bg-muted p-3">
           {cart.map((item) => (
             <div
               key={item.product.id}
-              className="flex items-center justify-between py-0.5"
+              className="flex items-center justify-between gap-3"
             >
-              <span className="text-foreground">
-                {item.qty}x {item.product.name}
-              </span>
-              <span className="text-muted-foreground">
-                {formatCurrency(item.product.priceCents * item.qty)}
-              </span>
+              <div className="min-w-0">
+                <span className="text-foreground block truncate">
+                  {item.qty}x {item.product.name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {formatCurrency(item.product.priceCents)} un.
+                </span>
+              </div>
+              <div className="w-40 shrink-0">
+                <CurrencyInput
+                  value={
+                    lineTotalsByProductId[item.product.id] ??
+                    item.product.priceCents * item.qty
+                  }
+                  onChange={(v) => updateLineTotal(item.product.id, v)}
+                  className="h-8"
+                />
+              </div>
             </div>
           ))}
+          {adjustmentCents !== 0 && (
+            <div className="flex items-center justify-between border-t border-border/60 pt-2 text-xs">
+              <span className="text-muted-foreground">Ajuste manual</span>
+              <span className="font-medium text-foreground">
+                {adjustmentCents > 0 ? "+" : "-"}
+                {formatCurrency(Math.abs(adjustmentCents))}
+              </span>
+            </div>
+          )}
         </div>
 
         <Separator />

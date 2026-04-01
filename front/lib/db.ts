@@ -647,12 +647,13 @@ export interface CreateSaleInput {
   payments: PaymentSplit[]
   customerName?: string | null
   customerPhone?: string | null
+  lineTotalOverridesCents?: Record<string, number>
 }
 
 export function createSale(
   input: CreateSaleInput
 ): { sale: Sale; saleItems: SaleItem[] } | null {
-  const { items, payments, customerName, customerPhone } = input
+  const { items, payments, customerName, customerPhone, lineTotalOverridesCents } = input
   if (items.length === 0) return null
 
   const products = read<Product>(getProductsKey())
@@ -716,16 +717,25 @@ export function createSale(
   const saleId = randomUUID()
   const now = new Date().toISOString()
 
-  const saleItems: SaleItem[] = items.map((item) => ({
-    id: randomUUID(),
-    saleId,
-    productId: item.product.id,
-    productName: item.product.name,
-    sku: item.product.sku,
-    qty: item.qty,
-    unitPriceCents: item.product.priceCents,
-    lineTotalCents: item.product.priceCents * item.qty,
-  }))
+  const saleItems: SaleItem[] = items.map((item) => {
+    const defaultLineTotal = item.product.priceCents * item.qty
+    const overriddenTotal = lineTotalOverridesCents?.[item.product.id]
+    const lineTotalCents =
+      typeof overriddenTotal === "number" && Number.isFinite(overriddenTotal)
+        ? Math.max(0, Math.floor(overriddenTotal))
+        : defaultLineTotal
+
+    return {
+      id: randomUUID(),
+      saleId,
+      productId: item.product.id,
+      productName: item.product.name,
+      sku: item.product.sku,
+      qty: item.qty,
+      unitPriceCents: item.qty > 0 ? Math.floor(lineTotalCents / item.qty) : item.product.priceCents,
+      lineTotalCents,
+    }
+  })
 
   const totalCents = saleItems.reduce((sum, si) => sum + si.lineTotalCents, 0)
   const itemsCount = saleItems.reduce((sum, si) => sum + si.qty, 0)
