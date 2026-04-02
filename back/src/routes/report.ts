@@ -7,6 +7,12 @@ export const reportRouter = Router();
 reportRouter.use(authMiddleware);
 reportRouter.use(requireStoreUserOrSuperAdmin);
 
+function normalizeProductId(productId: string): string {
+  const splitIndex = productId.indexOf("::");
+  if (splitIndex <= 0) return productId;
+  return productId.slice(0, splitIndex);
+}
+
 function getStoreId(req: { user?: { role: string; storeId: string | null }; query?: { storeId?: string } }) {
   return req.user!.role === "SUPER_ADMIN" && req.query?.storeId
     ? (req.query.storeId as string)
@@ -79,6 +85,29 @@ reportRouter.get("/sales", async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
+    const normalizedProductIds = Array.from(
+      new Set(
+        sales.flatMap((sale) =>
+          sale.items.map((item) => normalizeProductId(item.productId))
+        )
+      )
+    );
+
+    const products = normalizedProductIds.length
+      ? await prisma.product.findMany({
+          where: {
+            storeId,
+            id: { in: normalizedProductIds },
+          },
+          select: {
+            id: true,
+            category: true,
+          },
+        })
+      : [];
+
+    const productCategoryById = new Map(products.map((product) => [product.id, product.category]));
+
     const result = sales.map((s) => ({
       id: s.id,
       createdAt: s.createdAt.toISOString(),
@@ -87,7 +116,18 @@ reportRouter.get("/sales", async (req, res) => {
       customerName: s.customerName,
       customerPhone: s.customerPhone,
       payments: s.payments.map((p) => ({ method: p.method, amountCents: p.amountCents })),
-      items: s.items,
+      items: s.items.map((item) => ({
+        id: item.id,
+        saleId: item.saleId,
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        qty: item.qty,
+        unitPriceCents: item.unitPriceCents,
+        lineTotalCents: item.lineTotalCents,
+        productCategory:
+          productCategoryById.get(normalizeProductId(item.productId)) ?? null,
+      })),
     }));
     res.status(200).json(result);
   } catch (e) {

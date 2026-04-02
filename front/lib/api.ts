@@ -1,3 +1,5 @@
+import type { PaymentMethod, ProductCategory } from "@/lib/types"
+
 const getBaseUrl = () =>
   (typeof window !== "undefined"
     ? (process.env.NEXT_PUBLIC_API_URL ?? "")
@@ -93,8 +95,18 @@ export async function getReportSales(
     itemsCount: number;
     customerName: string | null;
     customerPhone: string | null;
-    payments: { method: string; amountCents: number }[];
-    items: { id: string; productName: string; sku: string | null; qty: number; lineTotalCents: number }[];
+    payments: { method: PaymentMethod; amountCents: number }[];
+    items: {
+      id: string;
+      saleId: string;
+      productId: string;
+      productName: string;
+      sku: string | null;
+      qty: number;
+      unitPriceCents: number;
+      lineTotalCents: number;
+      productCategory: ProductCategory | null;
+    }[];
   }[]
 > {
   let url = getApiUrl(

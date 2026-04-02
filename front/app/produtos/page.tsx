@@ -1,7 +1,20 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Plus, Search, Pencil, PackageMinus, Trash2, Filter, Download, History } from "lucide-react"
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Filter,
+  Grid3X3,
+  History,
+  PackageMinus,
+  Pencil,
+  Plus,
+  Search,
+  TableProperties,
+  Trash2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,6 +36,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   ProductFiltersDialog,
   countActiveProductFilters,
   type ProductFilters,
@@ -36,6 +55,13 @@ import { StockHistoryDialog } from "@/components/stock-history-dialog"
 import { BulkPriceDialog } from "@/components/bulk-price-dialog"
 import { ProductExportDialog } from "@/components/product-export-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { getProducts, deleteProduct, getProductById } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
 import { formatCurrency } from "@/lib/format"
@@ -51,6 +77,10 @@ const CATEGORY_COLORS: Record<ProductCategory, string> = {
   eletronicos: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
   diversos: "bg-neutral-100 text-neutral-800 dark:bg-neutral-800/40 dark:text-neutral-300",
 }
+
+type ProductViewMode = "table" | "grid"
+
+const ITEMS_PER_PAGE_OPTIONS = [10, 20, 30, 50]
 
 function createEmptyProductFilters(): ProductFilters {
   return {
@@ -137,7 +167,15 @@ function matchesProductFilters(product: Product, filters: ProductFilters): boole
   return true
 }
 
-function ProductImage({ src, name }: { src: string | null; name: string }) {
+function ProductImage({
+  src,
+  name,
+  onClick,
+}: {
+  src: string | null
+  name: string
+  onClick?: () => void
+}) {
   if (!src) {
     return (
       <div className="flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-semibold shrink-0">
@@ -145,12 +183,27 @@ function ProductImage({ src, name }: { src: string | null; name: string }) {
       </div>
     )
   }
-  return (
+
+  const imageElement = (
     <img
       src={src}
       alt={name}
-      className="size-10 rounded-md object-cover border border-border shrink-0"
+      className="size-10 rounded-md object-cover border border-border shrink-0 cursor-pointer"
     />
+  )
+
+  if (!onClick) return imageElement
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-zoom-in"
+      title="Ampliar imagem"
+      aria-label={`Ampliar imagem de ${name}`}
+    >
+      {imageElement}
+    </button>
   )
 }
 
@@ -190,6 +243,10 @@ export default function ProdutosPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [bulkPriceOpen, setBulkPriceOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ProductViewMode>("table")
+  const [tablePage, setTablePage] = useState(1)
+  const [tableItemsPerPage, setTableItemsPerPage] = useState(ITEMS_PER_PAGE_OPTIONS[0])
+  const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
   const isMobile = useIsMobile()
 
   const selectedProducts = useMemo(() => {
@@ -202,9 +259,32 @@ export default function ProdutosPage() {
     return countActiveProductFilters(productFilters)
   }, [productFilters])
 
+  const totalTablePages = useMemo(() => {
+    return Math.max(1, Math.ceil(products.length / tableItemsPerPage))
+  }, [products.length, tableItemsPerPage])
+
+  useEffect(() => {
+    if (tablePage > totalTablePages) {
+      setTablePage(totalTablePages)
+    }
+  }, [tablePage, totalTablePages])
+
+  const paginatedProducts = useMemo(() => {
+    const start = (tablePage - 1) * tableItemsPerPage
+    const end = start + tableItemsPerPage
+    return products.slice(start, end)
+  }, [products, tablePage, tableItemsPerPage])
+
+  const visibleProducts = useMemo(() => {
+    if (!isMobile && viewMode === "table") {
+      return paginatedProducts
+    }
+    return products
+  }, [isMobile, viewMode, paginatedProducts, products])
+
   const allVisibleSelected =
-    products.length > 0 && products.every((p) => selectedIds.has(p.id))
-  const someVisibleSelected = products.some((p) => selectedIds.has(p.id))
+    visibleProducts.length > 0 && visibleProducts.every((p) => selectedIds.has(p.id))
+  const someVisibleSelected = visibleProducts.some((p) => selectedIds.has(p.id))
 
   function toggleSelectId(id: string, checked: boolean) {
     setSelectedIds((prev) => {
@@ -219,13 +299,13 @@ export default function ProdutosPage() {
     if (checked) {
       setSelectedIds((prev) => {
         const next = new Set(prev)
-        for (const p of products) next.add(p.id)
+        for (const p of visibleProducts) next.add(p.id)
         return next
       })
     } else {
       setSelectedIds((prev) => {
         const next = new Set(prev)
-        for (const p of products) next.delete(p.id)
+        for (const p of visibleProducts) next.delete(p.id)
         return next
       })
     }
@@ -244,7 +324,17 @@ export default function ProdutosPage() {
     loadProducts()
   }, [loadProducts])
 
-  // Recarrega lista quando a sincronização atualiza o localStorage (priorizar servidor)
+  useEffect(() => {
+    setTablePage(1)
+  }, [query, productFilters, tableItemsPerPage])
+
+  useEffect(() => {
+    if (isMobile && viewMode !== "grid") {
+      setViewMode("grid")
+    }
+  }, [isMobile, viewMode])
+
+  // Recarrega lista quando a sincronizacao atualiza o localStorage (priorizar servidor)
   useEffect(() => {
     const onStorage = () => loadProducts()
     window.addEventListener("storage", onStorage)
@@ -282,6 +372,9 @@ export default function ProdutosPage() {
     return <Badge variant="secondary">{stock}</Badge>
   }
 
+  const tableRangeStart = products.length === 0 ? 0 : (tablePage - 1) * tableItemsPerPage + 1
+  const tableRangeEnd = Math.min(tablePage * tableItemsPerPage, products.length)
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -301,7 +394,7 @@ export default function ProdutosPage() {
             disabled={selectedProducts.length === 0}
             onClick={() => setBulkPriceOpen(true)}
           >
-            Preço em massa
+            Preco em massa
             {selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ""}
           </Button>
           <Button
@@ -321,7 +414,7 @@ export default function ProdutosPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -331,7 +424,31 @@ export default function ProdutosPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {!isMobile && (
+            <div className="flex items-center rounded-md border border-border p-1">
+              <Button
+                type="button"
+                variant={viewMode === "table" ? "secondary" : "ghost"}
+                size="sm"
+                className="gap-1"
+                onClick={() => setViewMode("table")}
+              >
+                <TableProperties className="size-4" />
+                Tabela
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === "grid" ? "secondary" : "ghost"}
+                size="sm"
+                className="gap-1"
+                onClick={() => setViewMode("grid")}
+              >
+                <Grid3X3 className="size-4" />
+                Grid
+              </Button>
+            </div>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -356,8 +473,8 @@ export default function ProdutosPage() {
       </div>
 
       {/* Desktop: Table */}
-      {!isMobile ? (
-        <div className="rounded-lg border border-border">
+      {!isMobile && viewMode === "table" ? (
+        <div className="rounded-lg border border-border overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -394,7 +511,7 @@ export default function ProdutosPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                products.map((product) => {
+                paginatedProducts.map((product) => {
                   const subtitle = productSubtitle(product)
                   return (
                     <TableRow key={product.id}>
@@ -408,7 +525,15 @@ export default function ProdutosPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <ProductImage src={product.imageUrl} name={product.name} />
+                        <ProductImage
+                          src={product.imageUrl}
+                          name={product.name}
+                          onClick={
+                            product.imageUrl
+                              ? () => setPreviewProduct(product)
+                              : undefined
+                          }
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
@@ -485,12 +610,63 @@ export default function ProdutosPage() {
               )}
             </TableBody>
           </Table>
+
+          {products.length > 0 && (
+            <div className="flex flex-col gap-3 border-t border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Mostrando {tableRangeStart}-{tableRangeEnd} de {products.length}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <span className="text-sm text-muted-foreground">Itens por pagina</span>
+                <Select
+                  value={String(tableItemsPerPage)}
+                  onValueChange={(value) => setTableItemsPerPage(Number(value))}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue placeholder="10" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ITEMS_PER_PAGE_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={String(option)}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={tablePage <= 1}
+                  onClick={() => setTablePage((prev) => Math.max(1, prev - 1))}
+                >
+                  <ChevronLeft className="size-4" />
+                  Anterior
+                </Button>
+                <span className="min-w-[110px] text-center text-sm text-muted-foreground">
+                  Pagina {tablePage} de {totalTablePages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={tablePage >= totalTablePages}
+                  onClick={() =>
+                    setTablePage((prev) => Math.min(totalTablePages, prev + 1))
+                  }
+                >
+                  Proxima
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
-        /* Mobile: Cards */
-        <div className="flex flex-col gap-3">
+        /* Grid */
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {products.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
+            <p className="col-span-full text-center text-muted-foreground py-8">
               Nenhum produto encontrado
             </p>
           ) : (
@@ -498,81 +674,104 @@ export default function ProdutosPage() {
               const subtitle = productSubtitle(product)
               return (
                 <Card key={product.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-2">
                       <Checkbox
-                        className="mt-2"
                         checked={selectedIds.has(product.id)}
                         onCheckedChange={(v) =>
                           toggleSelectId(product.id, v === true)
                         }
                         aria-label={`Selecionar ${product.name}`}
                       />
-                      <ProductImage src={product.imageUrl} name={product.name} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-foreground truncate">
-                            {product.name}
-                          </p>
-                          <Badge
-                            variant="secondary"
-                            className={`text-[10px] px-1.5 py-0 ${CATEGORY_COLORS[product.category] || ""}`}
-                          >
-                            {PRODUCT_CATEGORY_LABELS[product.category]}
-                          </Badge>
+                      <Badge
+                        variant="secondary"
+                        className={`text-[10px] px-1.5 py-0 ${CATEGORY_COLORS[product.category] || ""}`}
+                      >
+                        {PRODUCT_CATEGORY_LABELS[product.category]}
+                      </Badge>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="mt-2 block w-full overflow-hidden rounded-md border border-border bg-muted cursor-zoom-in"
+                      onClick={() => product.imageUrl && setPreviewProduct(product)}
+                      disabled={!product.imageUrl}
+                      title={product.imageUrl ? "Ampliar imagem" : "Produto sem imagem"}
+                      aria-label={`Visualizar imagem de ${product.name}`}
+                    >
+                      {product.imageUrl ? (
+                        <img
+                          src={product.imageUrl}
+                          alt={product.name}
+                          className="h-36 w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-36 items-center justify-center text-3xl font-semibold text-muted-foreground">
+                          {product.name.charAt(0).toUpperCase()}
                         </div>
-                        {subtitle && (
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                            {subtitle}
-                          </p>
-                        )}
-                        {product.sku && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            SKU: {product.sku}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-3 mt-2">
-                          <span className="text-sm font-semibold text-foreground">
-                            {formatCurrency(product.priceCents)}
-                          </span>
-                          {stockBadge(product.stock)}
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => handleEdit(product)}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => setStockProduct(product)}
-                        >
-                          <PackageMinus className="size-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => setHistoryProduct(product)}
-                          title="Historico de estoque"
-                        >
-                          <History className="size-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(product)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
+                      )}
+                    </button>
+
+                    <div className="mt-3 min-w-0">
+                      <p className="font-medium text-foreground break-words">
+                        {product.name}
+                      </p>
+                      {subtitle && (
+                        <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                          {subtitle}
+                        </p>
+                      )}
+                      {product.sku && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          SKU: {product.sku}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        {formatCurrency(product.priceCents)}
+                      </span>
+                      {stockBadge(product.stock)}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7"
+                        onClick={() => handleEdit(product)}
+                        title="Editar"
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7"
+                        onClick={() => setStockProduct(product)}
+                        title="Ajustar estoque"
+                      >
+                        <PackageMinus className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7"
+                        onClick={() => setHistoryProduct(product)}
+                        title="Historico de estoque"
+                      >
+                        <History className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(product)}
+                        title="Excluir"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -621,6 +820,26 @@ export default function ProdutosPage() {
           setSelectedIds(new Set())
         }}
       />
+
+      <Dialog
+        open={!!previewProduct}
+        onOpenChange={(open) => !open && setPreviewProduct(null)}
+      >
+        <DialogContent className="max-w-4xl p-4">
+          <DialogHeader>
+            <DialogTitle>{previewProduct?.name}</DialogTitle>
+          </DialogHeader>
+          {previewProduct?.imageUrl && (
+            <div className="overflow-hidden rounded-md border border-border bg-muted">
+              <img
+                src={previewProduct.imageUrl}
+                alt={previewProduct.name}
+                className="max-h-[75vh] w-full object-contain"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={!!deleteTarget}

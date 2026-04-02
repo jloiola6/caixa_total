@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Bell, Check, CheckCheck, Receipt } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Bell, Check, CheckCheck, Receipt, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,6 +25,7 @@ function formatDateSafe(iso: string): string {
 }
 
 export default function NotificacoesPage() {
+  const router = useRouter()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -104,6 +106,21 @@ export default function NotificacoesPage() {
     }
   }
 
+  function handleViewDetails(notification: AppNotification) {
+    if (!notification.saleId) return
+
+    const query = new URLSearchParams({
+      view: "report",
+      saleId: notification.saleId,
+    })
+
+    if (notification.saleCreatedAt) {
+      query.set("saleDate", notification.saleCreatedAt)
+    }
+
+    router.push(`/relatorios?${query.toString()}`)
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -172,8 +189,20 @@ export default function NotificacoesPage() {
                     Venda: {notification.saleCreatedAt ? formatDateSafe(notification.saleCreatedAt) : "-"}
                   </span>
                 </div>
-                {!notification.readAt && (
-                  <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {notification.saleId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewDetails(notification)}
+                      className="gap-1.5"
+                    >
+                      <Search className="size-3.5" />
+                      Ver detalhes
+                    </Button>
+                  )}
+                  {!notification.readAt && (
                     <Button
                       type="button"
                       variant="secondary"
@@ -184,8 +213,8 @@ export default function NotificacoesPage() {
                       <Check className="size-3.5" />
                       Marcar como lida
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}
