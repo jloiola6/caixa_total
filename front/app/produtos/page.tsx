@@ -68,7 +68,6 @@ import { formatCurrency } from "@/lib/format"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
 import { toast } from "sonner"
-import { useIsMobile } from "@/hooks/use-mobile"
 
 const CATEGORY_COLORS: Record<ProductCategory, string> = {
   roupas: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
@@ -247,7 +246,6 @@ export default function ProdutosPage() {
   const [tablePage, setTablePage] = useState(1)
   const [tableItemsPerPage, setTableItemsPerPage] = useState(ITEMS_PER_PAGE_OPTIONS[0])
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
-  const isMobile = useIsMobile()
 
   const selectedProducts = useMemo(() => {
     return Array.from(selectedIds)
@@ -276,11 +274,11 @@ export default function ProdutosPage() {
   }, [products, tablePage, tableItemsPerPage])
 
   const visibleProducts = useMemo(() => {
-    if (!isMobile && viewMode === "table") {
+    if (viewMode === "table") {
       return paginatedProducts
     }
     return products
-  }, [isMobile, viewMode, paginatedProducts, products])
+  }, [viewMode, paginatedProducts, products])
 
   const allVisibleSelected =
     visibleProducts.length > 0 && visibleProducts.every((p) => selectedIds.has(p.id))
@@ -329,10 +327,9 @@ export default function ProdutosPage() {
   }, [query, productFilters, tableItemsPerPage])
 
   useEffect(() => {
-    if (isMobile && viewMode !== "grid") {
-      setViewMode("grid")
-    }
-  }, [isMobile, viewMode])
+    const isMobileViewport = window.matchMedia("(max-width: 767px)").matches
+    setViewMode(isMobileViewport ? "grid" : "table")
+  }, [])
 
   // Recarrega lista quando a sincronizacao atualiza o localStorage (priorizar servidor)
   useEffect(() => {
@@ -425,30 +422,28 @@ export default function ProdutosPage() {
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!isMobile && (
-            <div className="flex items-center rounded-md border border-border p-1">
-              <Button
-                type="button"
-                variant={viewMode === "table" ? "secondary" : "ghost"}
-                size="sm"
-                className="gap-1"
-                onClick={() => setViewMode("table")}
-              >
-                <TableProperties className="size-4" />
-                Tabela
-              </Button>
-              <Button
-                type="button"
-                variant={viewMode === "grid" ? "secondary" : "ghost"}
-                size="sm"
-                className="gap-1"
-                onClick={() => setViewMode("grid")}
-              >
-                <Grid3X3 className="size-4" />
-                Grid
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center rounded-md border border-border p-1">
+            <Button
+              type="button"
+              variant={viewMode === "table" ? "secondary" : "ghost"}
+              size="sm"
+              className="gap-1"
+              onClick={() => setViewMode("table")}
+            >
+              <TableProperties className="size-4" />
+              Tabela
+            </Button>
+            <Button
+              type="button"
+              variant={viewMode === "grid" ? "secondary" : "ghost"}
+              size="sm"
+              className="gap-1"
+              onClick={() => setViewMode("grid")}
+            >
+              <Grid3X3 className="size-4" />
+              Grid
+            </Button>
+          </div>
           <Button
             type="button"
             variant="outline"
@@ -472,144 +467,146 @@ export default function ProdutosPage() {
         </div>
       </div>
 
-      {/* Desktop: Table */}
-      {!isMobile && viewMode === "table" ? (
+      {/* Table */}
+      {viewMode === "table" ? (
         <div className="rounded-lg border border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10 px-2">
-                  <Checkbox
-                    checked={
-                      allVisibleSelected
-                        ? true
-                        : someVisibleSelected
-                          ? "indeterminate"
-                          : false
-                    }
-                    onCheckedChange={(v) => toggleSelectAllVisible(v === true)}
-                    aria-label="Selecionar todos da lista"
-                  />
-                </TableHead>
-                <TableHead className="w-12"></TableHead>
-                <TableHead>Produto</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead className="text-right">Preco</TableHead>
-                <TableHead className="text-center">Estoque</TableHead>
-                <TableHead className="text-right">Acoes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {products.length === 0 ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    className="text-center text-muted-foreground py-8"
-                  >
-                    Nenhum produto encontrado
-                  </TableCell>
+                  <TableHead className="w-10 px-2">
+                    <Checkbox
+                      checked={
+                        allVisibleSelected
+                          ? true
+                          : someVisibleSelected
+                            ? "indeterminate"
+                            : false
+                      }
+                      onCheckedChange={(v) => toggleSelectAllVisible(v === true)}
+                      aria-label="Selecionar todos da lista"
+                    />
+                  </TableHead>
+                  <TableHead className="w-12"></TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead className="text-right">Preco</TableHead>
+                  <TableHead className="text-center">Estoque</TableHead>
+                  <TableHead className="text-right">Acoes</TableHead>
                 </TableRow>
-              ) : (
-                paginatedProducts.map((product) => {
-                  const subtitle = productSubtitle(product)
-                  return (
-                    <TableRow key={product.id}>
-                      <TableCell className="w-10 px-2">
-                        <Checkbox
-                          checked={selectedIds.has(product.id)}
-                          onCheckedChange={(v) =>
-                            toggleSelectId(product.id, v === true)
-                          }
-                          aria-label={`Selecionar ${product.name}`}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <ProductImage
-                          src={product.imageUrl}
-                          name={product.name}
-                          onClick={
-                            product.imageUrl
-                              ? () => setPreviewProduct(product)
-                              : undefined
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">
-                            {product.name}
-                          </span>
-                          {subtitle && (
-                            <span className="text-xs text-muted-foreground">
-                              {subtitle}
+              </TableHeader>
+              <TableBody>
+                {products.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="text-center text-muted-foreground py-8"
+                    >
+                      Nenhum produto encontrado
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedProducts.map((product) => {
+                    const subtitle = productSubtitle(product)
+                    return (
+                      <TableRow key={product.id}>
+                        <TableCell className="w-10 px-2">
+                          <Checkbox
+                            checked={selectedIds.has(product.id)}
+                            onCheckedChange={(v) =>
+                              toggleSelectId(product.id, v === true)
+                            }
+                            aria-label={`Selecionar ${product.name}`}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <ProductImage
+                            src={product.imageUrl}
+                            name={product.name}
+                            onClick={
+                              product.imageUrl
+                                ? () => setPreviewProduct(product)
+                                : undefined
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">
+                              {product.name}
                             </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={CATEGORY_COLORS[product.category] || ""}
-                        >
-                          {PRODUCT_CATEGORY_LABELS[product.category] || product.category}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {product.sku || "-"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(product.priceCents)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {stockBadge(product.stock)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => handleEdit(product)}
-                            title="Editar"
+                            {subtitle && (
+                              <span className="text-xs text-muted-foreground">
+                                {subtitle}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className={CATEGORY_COLORS[product.category] || ""}
                           >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => setStockProduct(product)}
-                            title="Ajustar estoque"
-                          >
-                            <PackageMinus className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            onClick={() => setHistoryProduct(product)}
-                            title="Historico de estoque"
-                          >
-                            <History className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-destructive hover:text-destructive"
-                            onClick={() => setDeleteTarget(product)}
-                            title="Excluir"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
+                            {PRODUCT_CATEGORY_LABELS[product.category] || product.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {product.sku || "-"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(product.priceCents)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {stockBadge(product.stock)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => handleEdit(product)}
+                              title="Editar"
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => setStockProduct(product)}
+                              title="Ajustar estoque"
+                            >
+                              <PackageMinus className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => setHistoryProduct(product)}
+                              title="Historico de estoque"
+                            >
+                              <History className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive hover:text-destructive"
+                              onClick={() => setDeleteTarget(product)}
+                              title="Excluir"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
           {products.length > 0 && (
             <div className="flex flex-col gap-3 border-t border-border p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -664,7 +661,7 @@ export default function ProdutosPage() {
         </div>
       ) : (
         /* Grid */
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 min-[520px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {products.length === 0 ? (
             <p className="col-span-full text-center text-muted-foreground py-8">
               Nenhum produto encontrado

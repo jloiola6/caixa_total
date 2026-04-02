@@ -15,6 +15,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { SyncModal } from "@/components/sync-modal"
@@ -33,6 +34,7 @@ const navItems = [
 export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const { isMobile, setOpenMobile } = useSidebar()
   const { user, logout } = useAuth()
   const [syncOpen, setSyncOpen] = useState(false)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
@@ -74,6 +76,12 @@ export function AppSidebar() {
     router.replace("/login")
   }
 
+  function handleNavigate() {
+    if (isMobile) {
+      setOpenMobile(false)
+    }
+  }
+
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
@@ -103,7 +111,7 @@ export function AppSidebar() {
                     isActive={pathname === item.href}
                     tooltip={item.title}
                   >
-                    <Link href={item.href}>
+                    <Link href={item.href} onClick={handleNavigate}>
                       <item.icon />
                       <span>{item.title}</span>
                       {item.href === "/notificacoes" && unreadNotifications > 0 && (
@@ -122,7 +130,7 @@ export function AppSidebar() {
                     isActive={pathname === "/admin"}
                     tooltip="Admin"
                   >
-                    <Link href="/admin">
+                    <Link href="/admin" onClick={handleNavigate}>
                       <Shield />
                       <span>Admin</span>
                     </Link>

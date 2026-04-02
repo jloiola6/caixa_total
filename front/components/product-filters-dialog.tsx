@@ -204,7 +204,7 @@ export function ProductFiltersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl max-h-[86svh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Filtros de produtos</DialogTitle>
           <DialogDescription>

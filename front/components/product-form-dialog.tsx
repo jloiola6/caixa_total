@@ -7,7 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,9 +24,21 @@ import { upsertProduct, getAllBarcodes } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
-import { ImagePlus, X, Shuffle, Printer, Plus, Trash2 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ImagePlus,
+  Plus,
+  Printer,
+  Shuffle,
+  Trash2,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 import JsBarcode from "jsbarcode"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 function generateEAN13(existingBarcodes: Set<string>): string {
   const maxAttempts = 1000
@@ -80,6 +91,8 @@ interface ProductFormDialogProps {
 const CATEGORIES = Object.entries(PRODUCT_CATEGORY_LABELS) as [ProductCategory, string][]
 const CONTROL_TYPE_OPTIONS = ["Televisão", "Receptor", "Ar condicionado", "projetor"] as const
 type TennisSizeRow = { id: string; size: string; stock: number }
+const FORM_STEPS = ["Identificacao", "Detalhes", "Precos"] as const
+type FormStep = 0 | 1 | 2
 
 function createTennisSizeRow(): TennisSizeRow {
   const id =
@@ -112,6 +125,7 @@ export function ProductFormDialog({
   const [controlNumber, setControlNumber] = useState("")
   const [tennisSizes, setTennisSizes] = useState<TennisSizeRow[]>(() => [createTennisSizeRow()])
   const [barcodeSvg, setBarcodeSvg] = useState<string | null>(null)
+  const [currentStep, setCurrentStep] = useState<FormStep>(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isEditing = !!product
@@ -207,8 +221,51 @@ export function ProductFormDialog({
     }
   }, [category, isEditing, tennisSizes.length])
 
+  useEffect(() => {
+    if (open) {
+      setCurrentStep(0)
+    }
+  }, [open, product?.id])
+
   function handleGenerateBarcode() {
     generateBarcodeForForm(true)
+  }
+
+  function validateStep(step: FormStep): boolean {
+    if (step === 0) {
+      if (!name.trim()) {
+        toast.error("Nome do produto e obrigatorio")
+        return false
+      }
+      if (!category) {
+        toast.error("Categoria e obrigatoria")
+        return false
+      }
+    }
+
+    if (step === 2) {
+      if (priceCents <= 0) {
+        toast.error("Preco de venda deve ser maior que zero")
+        return false
+      }
+    }
+
+    return true
+  }
+
+  function goToNextStep() {
+    if (!validateStep(currentStep)) return
+    setCurrentStep((prev) => Math.min(2, prev + 1) as FormStep)
+  }
+
+  function goToPreviousStep() {
+    setCurrentStep((prev) => Math.max(0, prev - 1) as FormStep)
+  }
+
+  function handleContinueClick(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    goToNextStep()
   }
 
   function handlePrintBarcode() {
@@ -263,6 +320,10 @@ export function ProductFormDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (currentStep < 2) {
+      goToNextStep()
+      return
+    }
 
     if (!name.trim()) {
       toast.error("Nome do produto e obrigatorio")
@@ -369,379 +430,489 @@ export function ProductFormDialog({
   const showTennisSizesTable = category === "tenis"
   const showColor = category === "roupas" || category === "tenis"
   const showControlNumber = category === "controles"
-  const showDescription = category === "eletronicos" || category === "diversos" || category === "controles"
+  const showDescription = true
   const controlTypeOptions = controlType && !(CONTROL_TYPE_OPTIONS as readonly string[]).includes(controlType)
     ? [controlType, ...CONTROL_TYPE_OPTIONS]
     : CONTROL_TYPE_OPTIONS
+  const summaryStock =
+    category === "tenis"
+      ? tennisSizes.reduce((sum, row) => sum + (Number.isFinite(row.stock) ? Math.max(0, row.stock) : 0), 0)
+      : stock
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90svh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? "Editar Produto" : "Novo Produto"}
-          </DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? "Altere os dados do produto."
-              : "Preencha os dados do novo produto."}
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* Photo */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-4">
-              {imageUrl ? (
-                <div className="relative size-20 rounded-lg border border-border overflow-hidden bg-muted shrink-0">
-                  <img
-                    src={imageUrl}
-                    alt="Foto do produto"
-                    className="size-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setImageUrl(null)}
-                    className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 hover:bg-background"
-                    aria-label="Remover foto"
+      <DialogContent
+        showCloseButton={false}
+        className="w-[calc(100%-1rem)] sm:max-w-2xl p-0 gap-0 overflow-hidden max-h-[86svh] sm:max-h-[84svh]"
+      >
+        <form onSubmit={handleSubmit} className="flex min-h-[60svh] max-h-[86svh] sm:max-h-[84svh] flex-col">
+          <DialogHeader className="border-b px-4 py-4 sm:px-6 sm:py-5">
+            <DialogTitle className="text-2xl sm:text-[34px] leading-tight">
+              {isEditing ? "Editar Produto" : "Novo Produto"}
+            </DialogTitle>
+            <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 pl-2 pr-2 sm:gap-5">
+              {FORM_STEPS.map((stepLabel, index) => {
+                const isCompleted = currentStep > index
+                const isCurrent = currentStep === index
+                return (
+                  <div
+                    key={stepLabel}
+                    className={cn(
+                      "flex min-w-fit items-center",
+                      index < FORM_STEPS.length - 1 && "flex-1"
+                    )}
                   >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex size-20 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors shrink-0"
-                >
-                  <ImagePlus className="size-5" />
-                  <span className="text-[10px]">Adicionar</span>
-                </button>
-              )}
-              {imageUrl && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Trocar foto
-                </Button>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImageUpload}
-              />
-
-              {/* Name */}
-              <div className="flex flex-col gap-2 w-full">
-                <Label htmlFor="prod-name">Nome *</Label>
-                <Input
-                  id="prod-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Nome do produto"
-                  autoFocus
-                />
-              </div>
+                    <div
+                      className={cn(
+                        "flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                        isCompleted && "border-zinc-900 bg-zinc-900 text-white",
+                        isCurrent && !isCompleted && "border-zinc-900 text-zinc-900",
+                        !isCurrent && !isCompleted && "border-zinc-200 text-zinc-500"
+                      )}
+                    >
+                      {isCompleted ? <Check className="size-3.5" /> : index + 1}
+                    </div>
+                    <span
+                      className={cn(
+                        "ml-1.5 text-xs font-medium sm:ml-2 sm:text-sm",
+                        isCurrent || isCompleted ? "text-zinc-900" : "text-zinc-500"
+                      )}
+                    >
+                      {stepLabel}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
-          </div>
+          </DialogHeader>
 
-          {/* Category */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="prod-category">Categoria *</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v as ProductCategory)}>
-              <SelectTrigger id="prod-category">
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Brand/Control Type + Model */}
-          {(showBrand || showControlType || showModel) && (
-            <div className="grid grid-cols-2 gap-4">
-              {showBrand && (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="prod-brand">Marca</Label>
-                  <Input
-                    id="prod-brand"
-                    value={brand}
-                    onChange={(e) => setBrand(e.target.value)}
-                    placeholder="Ex: Nike, Samsung..."
-                  />
+          <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7">
+            {currentStep === 0 && (
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col items-start gap-4 sm:flex-row">
+                  {imageUrl ? (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => fileInputRef.current?.click()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault()
+                          fileInputRef.current?.click()
+                        }
+                      }}
+                      className="relative size-20 cursor-pointer rounded-xl border border-border overflow-hidden bg-muted shrink-0"
+                      title="Trocar foto"
+                    >
+                      <img
+                        src={imageUrl}
+                        alt="Foto do produto"
+                        className="size-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setImageUrl(null)
+                        }}
+                        className="absolute top-1 right-1 rounded-full bg-background/85 p-0.5 hover:bg-background"
+                        aria-label="Remover foto"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex size-20 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                    >
+                      <ImagePlus className="size-5" />
+                      <span className="text-[10px]">Adicionar</span>
+                    </button>
+                  )}
+                  <div className="w-full flex-1">
+                    <Label htmlFor="prod-name">Nome *</Label>
+                    <Input
+                      id="prod-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Nome do produto"
+                      autoFocus
+                      className="mt-1"
+                    />
+                  </div>
                 </div>
-              )}
-              {showControlType && (
-                <div className="flex flex-col gap-2 w-full">
-                  <Label htmlFor="prod-type">Tipo</Label>
-                  <Select
-                    value={controlType || undefined}
-                    onValueChange={setControlType}
-                  >
-                    <SelectTrigger id="prod-type">
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageUpload}
+                />
+
+                <div className="w-full sm:max-w-[260px]">
+                  <Label htmlFor="prod-category">Categoria *</Label>
+                  <Select value={category} onValueChange={(v) => setCategory(v as ProductCategory)}>
+                    <SelectTrigger id="prod-category" className="mt-1">
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {controlTypeOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
+                      {CATEGORIES.map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-              {showModel && (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="prod-model">Modelo</Label>
-                  <Input
-                    id="prod-model"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    placeholder="Ex: Air Max 90..."
-                  />
-                </div>
-              )}
-            </div>
-          )}
 
-          {/* Size + Color (roupas / tenis) */}
-          {(showSize || showColor) && (
-            <div className="grid grid-cols-2 gap-4">
-              {showSize && (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="prod-size">Tamanho</Label>
-                  <Input
-                    id="prod-size"
-                    value={size}
-                    onChange={(e) => setSize(e.target.value)}
-                    placeholder="Ex: P, M, G, GG..."
-                  />
-                </div>
-              )}
-              {showColor && (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="prod-color">Cor</Label>
-                  <Input
-                    id="prod-color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    placeholder="Ex: Preto, Azul..."
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tennis Sizes (create flow) */}
-          {showTennisSizesTable && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <Label>Numeracoes e Estoque *</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() =>
-                    setTennisSizes((prev) => [...prev, createTennisSizeRow()])
-                  }
-                >
-                  <Plus className="size-3.5" />
-                  Adicionar
-                </Button>
-              </div>
-              <div className="rounded-md border border-border overflow-hidden">
-                <div className="grid grid-cols-[1fr_120px_44px] bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
-                  <span>Numeracao</span>
-                  <span>Estoque</span>
-                  <span></span>
-                </div>
-                <div className="divide-y divide-border">
-                  {tennisSizes.map((row) => (
-                    <div
-                      key={row.id}
-                      className="grid grid-cols-[1fr_120px_44px] items-center gap-2 p-2"
-                    >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="prod-sku">SKU</Label>
+                    <Input
+                      id="prod-sku"
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value)}
+                      placeholder="Ex: SKU-001"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="prod-barcode">Codigo de Barras</Label>
+                    <div className="mt-1 flex items-center gap-2">
                       <Input
-                        value={row.size}
-                        onChange={(e) =>
-                          setTennisSizes((prev) =>
-                            prev.map((item) =>
-                              item.id === row.id ? { ...item, size: e.target.value } : item
-                            )
-                          )
-                        }
-                        placeholder="Ex: 38, 39, 40..."
-                      />
-                      <Input
-                        type="number"
-                        min={0}
-                        value={row.stock}
-                        onFocus={handleZeroPrefixedNumberFocus}
-                        onChange={(e) =>
-                          setTennisSizes((prev) =>
-                            prev.map((item) =>
-                              item.id === row.id
-                                ? { ...item, stock: Math.max(0, parseInt(e.target.value) || 0) }
-                                : item
-                            )
-                          )
-                        }
-                        placeholder="0"
+                        id="prod-barcode"
+                        value={barcode}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setBarcode(val)
+                          setBarcodeSvg(val.length >= 4 ? renderBarcodeSvg(val) : null)
+                        }}
+                        placeholder="Ex: 7891000..."
                       />
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
-                        className="size-8 text-destructive hover:text-destructive"
-                        disabled={tennisSizes.length === 1}
-                        onClick={() =>
-                          setTennisSizes((prev) => {
-                            if (prev.length === 1) return prev
-                            return prev.filter((item) => item.id !== row.id)
-                          })
-                        }
-                        title="Remover numeracao"
+                        onClick={handleGenerateBarcode}
+                        title="Gerar codigo aleatorio"
                       >
-                        <Trash2 className="size-3.5" />
+                        <Shuffle className="size-4" />
                       </Button>
                     </div>
-                  ))}
+                  </div>
                 </div>
+
+                {barcodeSvg && (
+                  <div className="rounded-xl border border-border p-3">
+                    <div
+                      dangerouslySetInnerHTML={{ __html: barcodeSvg }}
+                      className="flex justify-center [&>svg]:h-auto [&>svg]:max-w-full"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrintBarcode}
+                      className="mt-2 gap-1.5"
+                    >
+                      <Printer className="size-3.5" />
+                      Imprimir
+                    </Button>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Control Number (controles) */}
-          {showControlNumber && (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="prod-control-number">Numeracao do Controle</Label>
-              <Input
-                id="prod-control-number"
-                value={controlNumber}
-                onChange={(e) => setControlNumber(e.target.value)}
-                placeholder="Ex: BN59-01199F"
-              />
-            </div>
-          )}
+            {currentStep === 1 && (
+              <div className="flex flex-col gap-5">
+                {(showBrand || showControlType || showModel) && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {showBrand && (
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="prod-brand">Marca</Label>
+                        <Input
+                          id="prod-brand"
+                          value={brand}
+                          onChange={(e) => setBrand(e.target.value)}
+                          placeholder="Ex: Nike, Samsung..."
+                        />
+                      </div>
+                    )}
+                    {showControlType && (
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="prod-type">Tipo</Label>
+                        <Select
+                          value={controlType || undefined}
+                          onValueChange={setControlType}
+                        >
+                          <SelectTrigger id="prod-type">
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {controlTypeOptions.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {showModel && (
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="prod-model">Modelo</Label>
+                        <Input
+                          id="prod-model"
+                          value={model}
+                          onChange={(e) => setModel(e.target.value)}
+                          placeholder="Ex: Air Max 90..."
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
-          {/* Description (eletronicos, diversos, controles) */}
-          {showDescription && (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="prod-description">Descricao</Label>
-              <Textarea
-                id="prod-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Detalhes sobre o produto..."
-                rows={3}
-              />
-            </div>
-          )}
+                {(showSize || showColor) && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {showSize && (
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="prod-size">Tamanho</Label>
+                        <Input
+                          id="prod-size"
+                          value={size}
+                          onChange={(e) => setSize(e.target.value)}
+                          placeholder="Ex: P, M, G, GG..."
+                        />
+                      </div>
+                    )}
+                    {showColor && (
+                      <div className="flex flex-col gap-1">
+                        <Label htmlFor="prod-color">Cor</Label>
+                        <Input
+                          id="prod-color"
+                          value={color}
+                          onChange={(e) => setColor(e.target.value)}
+                          placeholder="Ex: Preto, Azul..."
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
-          {/* Barcode */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="prod-barcode">Código de Barras</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="prod-barcode"
-                value={barcode}
-                onChange={(e) => {
-                  const val = e.target.value
-                  setBarcode(val)
-                  setBarcodeSvg(val.length >= 4 ? renderBarcodeSvg(val) : null)
-                }}
-                placeholder="Ex: 7891000..."
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={handleGenerateBarcode}
-                title="Gerar código aleatório"
-              >
-                <Shuffle className="size-4" />
-              </Button>
-            </div>
+                {showControlNumber && (
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="prod-control-number">Numeracao do Controle</Label>
+                    <Input
+                      id="prod-control-number"
+                      value={controlNumber}
+                      onChange={(e) => setControlNumber(e.target.value)}
+                      placeholder="Ex: BN59-01199F"
+                    />
+                  </div>
+                )}
 
-            {barcodeSvg && (
-              <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-white p-3">
-                <div
-                  dangerouslySetInnerHTML={{ __html: barcodeSvg }}
-                  className="[&>svg]:max-w-full [&>svg]:h-auto"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePrintBarcode}
-                  className="gap-1.5"
-                >
-                  <Printer className="size-3.5" />
-                  Imprimir
-                </Button>
+                {showDescription && (
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="prod-description">Descricao</Label>
+                    <Textarea
+                      id="prod-description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Detalhes sobre o produto..."
+                      rows={10}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {currentStep === 2 && (
+              <div className="flex flex-col gap-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="prod-price">Preco de Venda *</Label>
+                    <CurrencyInput
+                      id="prod-price"
+                      value={priceCents}
+                      onChange={setPriceCents}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="prod-cost">Custo</Label>
+                    <CurrencyInput
+                      id="prod-cost"
+                      value={costCents}
+                      onChange={setCostCents}
+                    />
+                  </div>
+                </div>
+
+                {!isEditing && category !== "tenis" && (
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="prod-stock">Estoque Inicial</Label>
+                    <Input
+                      id="prod-stock"
+                      type="number"
+                      min={0}
+                      value={stock}
+                      onFocus={handleZeroPrefixedNumberFocus}
+                      onChange={(e) => setStock(parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+
+                {showTennisSizesTable && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Numeracoes e Estoque *</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() =>
+                          setTennisSizes((prev) => [...prev, createTennisSizeRow()])
+                        }
+                      >
+                        <Plus className="size-3.5" />
+                        Adicionar
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <div className="grid grid-cols-[minmax(0,1fr)_88px_40px] sm:grid-cols-[1fr_120px_44px] bg-muted/40 px-2 py-2 text-xs font-medium text-muted-foreground sm:px-3">
+                        <span>Numeracao</span>
+                        <span>Estoque</span>
+                        <span></span>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto divide-y divide-border">
+                        {tennisSizes.map((row) => (
+                          <div
+                            key={row.id}
+                            className="grid grid-cols-[minmax(0,1fr)_88px_40px] sm:grid-cols-[1fr_120px_44px] items-center gap-2 p-2"
+                          >
+                            <Input
+                              value={row.size}
+                              onChange={(e) =>
+                                setTennisSizes((prev) =>
+                                  prev.map((item) =>
+                                    item.id === row.id ? { ...item, size: e.target.value } : item
+                                  )
+                                )
+                              }
+                              placeholder="Ex: 38, 39, 40..."
+                            />
+                            <Input
+                              type="number"
+                              min={0}
+                              value={row.stock}
+                              onFocus={handleZeroPrefixedNumberFocus}
+                              onChange={(e) =>
+                                setTennisSizes((prev) =>
+                                  prev.map((item) =>
+                                    item.id === row.id
+                                      ? { ...item, stock: Math.max(0, parseInt(e.target.value) || 0) }
+                                      : item
+                                  )
+                                )
+                              }
+                              placeholder="0"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive hover:text-destructive"
+                              disabled={tennisSizes.length === 1}
+                              onClick={() =>
+                                setTennisSizes((prev) => {
+                                  if (prev.length === 1) return prev
+                                  return prev.filter((item) => item.id !== row.id)
+                                })
+                              }
+                              title="Remover numeracao"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    Resumo
+                  </p>
+                  <div className="mt-3 grid gap-2 text-sm sm:grid-cols-[120px_1fr]">
+                    <span className="text-zinc-600">Nome</span>
+                    <span className="font-medium text-zinc-900">{name || "-"}</span>
+                    <span className="text-zinc-600">Categoria</span>
+                    <span className="font-medium text-zinc-900">
+                      {PRODUCT_CATEGORY_LABELS[category]}
+                    </span>
+                    <span className="text-zinc-600">Estoque inicial</span>
+                    <span className="font-medium text-zinc-900">{summaryStock} un.</span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Prices */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="prod-price">Preco de Venda *</Label>
-              <CurrencyInput
-                id="prod-price"
-                value={priceCents}
-                onChange={setPriceCents}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="prod-cost">Custo</Label>
-              <CurrencyInput
-                id="prod-cost"
-                value={costCents}
-                onChange={setCostCents}
-              />
-            </div>
-          </div>
+          <DialogFooter className="border-t px-4 py-4 sm:px-6 sm:flex-row sm:items-center sm:justify-between">
+            {currentStep === 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancelar
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={goToPreviousStep}
+                className="gap-1.5"
+              >
+                <ChevronLeft className="size-4" />
+                Voltar
+              </Button>
+            )}
 
-          {/* Initial Stock (only on create) */}
-          {!isEditing && category !== "tenis" && (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="prod-stock">Estoque Inicial</Label>
-              <Input
-                id="prod-stock"
-                type="number"
-                min={0}
-                value={stock}
-                onFocus={handleZeroPrefixedNumberFocus}
-                onChange={(e) => setStock(parseInt(e.target.value) || 0)}
-                placeholder="0"
-              />
+            {!useIsMobile() && (
+            <div className="flex items-center gap-2">
+              {FORM_STEPS.map((_, index) => (
+                <span
+                  key={index}
+                  className={cn(
+                    "block h-2 w-2 rounded-full bg-zinc-300 transition-all",
+                    currentStep === index && "h-2.5 w-6 bg-zinc-900"
+                  )}
+                />
+              ))}
             </div>
-          )}
+            )}
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit">
-              {isEditing ? "Salvar" : "Cadastrar"}
-            </Button>
+            {currentStep < 2 ? (
+              <Button
+                type="button"
+                onClick={handleContinueClick}
+                className="gap-1.5 px-5"
+              >
+                Continuar
+                <ChevronRight className="size-4" />
+              </Button>
+            ) : (
+              <Button type="submit" className="gap-1.5 px-5">
+                <Check className="size-4" />
+                {isEditing ? "Salvar" : "Cadastrar"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
