@@ -35,7 +35,7 @@ import {
 import { BarcodeScanner } from "@/components/barcode-scanner"
 import { CheckoutDialog } from "@/components/checkout-dialog"
 import {
-  getSellableProducts,
+  getProducts,
   getSellableProductByBarcode,
   createSale,
 } from "@/lib/db"
@@ -45,6 +45,35 @@ import type { Product, CartItem, PaymentSplit } from "@/lib/types"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcut"
 import { toast } from "sonner"
 
+type ProductSizeOption = {
+  id: string
+  number: string
+  stock: number
+  sku: string | null
+  barcode: string | null
+}
+
+function getProductSizeOptions(product: Product): ProductSizeOption[] {
+  if (product.category === "tenis") return product.tennisSizes ?? []
+  if (product.category === "roupas") return product.clothingSizes ?? []
+  return []
+}
+
+function buildVariantProduct(baseProduct: Product, sizeOption: ProductSizeOption): Product {
+  const baseSku = baseProduct.sku ? `${baseProduct.sku}-${sizeOption.number}` : null
+  return {
+    ...baseProduct,
+    id: `${baseProduct.id}::${sizeOption.id}`,
+    name: `${baseProduct.name} (Tam ${sizeOption.number})`,
+    sku: sizeOption.sku ?? baseSku,
+    barcode: sizeOption.barcode ?? null,
+    size: sizeOption.number,
+    stock: sizeOption.stock,
+    tennisSizes: null,
+    clothingSizes: null,
+  }
+}
+
 export default function CaixaPage() {
   const [query, setQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Product[]>([])
@@ -53,6 +82,9 @@ export default function CaixaPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [clearCartOpen, setClearCartOpen] = useState(false)
   const [saleCompleteOpen, setSaleCompleteOpen] = useState(false)
+  const [sizePickerOpen, setSizePickerOpen] = useState(false)
+  const [sizePickerProduct, setSizePickerProduct] = useState<Product | null>(null)
+  const [selectedSizeOptionId, setSelectedSizeOptionId] = useState("")
   const [lastSaleTotal, setLastSaleTotal] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -65,6 +97,19 @@ export default function CaixaPage() {
     () => cart.reduce((sum, item) => sum + item.qty, 0),
     [cart]
   )
+  const sizePickerOptions = useMemo(
+    () => (sizePickerProduct ? getProductSizeOptions(sizePickerProduct) : []),
+    [sizePickerProduct]
+  )
+
+  useEffect(() => {
+    if (!sizePickerOpen) return
+    if (sizePickerOptions.length > 0) {
+      setSelectedSizeOptionId((prev) => prev || sizePickerOptions[0].id)
+    } else {
+      setSelectedSizeOptionId("")
+    }
+  }, [sizePickerOpen, sizePickerOptions])
 
   // Search products
   const handleSearch = useCallback(
@@ -74,7 +119,7 @@ export default function CaixaPage() {
         setSearchResults([])
         return
       }
-      const results = getSellableProducts(value)
+      const results = getProducts(value)
       setSearchResults(results)
     },
     []
@@ -97,7 +142,7 @@ export default function CaixaPage() {
       }
 
       // If only one search result, add it
-      const results = getSellableProducts(value)
+      const results = getProducts(value)
       if (results.length === 1) {
         addToCart(results[0])
         setQuery("")
@@ -107,7 +152,43 @@ export default function CaixaPage() {
     [query]
   )
 
+  function handleSizePickerOpenChange(next: boolean) {
+    setSizePickerOpen(next)
+    if (!next) {
+      setSizePickerProduct(null)
+      setSelectedSizeOptionId("")
+    }
+  }
+
+  function tryPickSizeBeforeAdding(product: Product): boolean {
+    const isVariantAlready = product.id.includes("::")
+    if (isVariantAlready) return false
+
+    if (product.category !== "tenis" && product.category !== "roupas") return false
+    const options = getProductSizeOptions(product)
+    if (options.length === 0) return false
+
+    setSizePickerProduct(product)
+    setSizePickerOpen(true)
+    return true
+  }
+
+  function confirmAddSelectedSize() {
+    if (!sizePickerProduct) return
+    const selected = sizePickerOptions.find((size) => size.id === selectedSizeOptionId)
+    if (!selected) {
+      toast.error("Selecione um tamanho para adicionar ao carrinho")
+      return
+    }
+
+    const sellableVariant = buildVariantProduct(sizePickerProduct, selected)
+    handleSizePickerOpenChange(false)
+    addToCart(sellableVariant)
+  }
+
   function addToCart(product: Product) {
+    if (tryPickSizeBeforeAdding(product)) return
+
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id)
       if (existing) {
@@ -276,7 +357,7 @@ export default function CaixaPage() {
                 value={query}
                 onChange={(e) => handleSearch(e.target.value)}
                 onKeyDown={handleSearchSubmit}
-                placeholder="Buscar produto ou escanear codigo..."
+                placeholder="Buscar por nome, SKU, detalhes ou codigo..."
                 className="pl-9"
                 autoFocus
               />
@@ -297,7 +378,7 @@ export default function CaixaPage() {
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2">
                 <Search className="size-10 opacity-30" />
                 <p className="text-sm">
-                  Digite o nome, SKU ou código de barras para buscar
+                  Digite nome, SKU, detalhes ou codigo de barras para buscar
                 </p>
               </div>
             ) : searchResults.length === 0 ? (
@@ -337,6 +418,11 @@ export default function CaixaPage() {
                           {product.sku && (
                             <span className="text-xs text-muted-foreground">
                               {product.sku}
+                            </span>
+                          )}
+                          {product.category === "controles" && product.controlNumber && (
+                            <span className="text-xs text-muted-foreground">
+                              N. {product.controlNumber}
                             </span>
                           )}
                           <span className="text-xs text-muted-foreground">
@@ -508,6 +594,61 @@ export default function CaixaPage() {
         cartTotal={cartTotal}
         onConfirm={confirmSale}
       />
+
+      <Dialog open={sizePickerOpen} onOpenChange={handleSizePickerOpenChange}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Selecionar tamanho</DialogTitle>
+            <DialogDescription>
+              {sizePickerProduct
+                ? `Escolha o tamanho de ${sizePickerProduct.name} para adicionar ao carrinho.`
+                : "Escolha um tamanho para continuar."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {sizePickerOptions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nao ha tamanhos cadastrados para este produto.</p>
+          ) : (
+            <div className="flex flex-col gap-2 max-h-64 overflow-auto">
+              {sizePickerOptions.map((size) => {
+                const selected = selectedSizeOptionId === size.id
+                return (
+                  <button
+                    key={size.id}
+                    type="button"
+                    onClick={() => setSelectedSizeOptionId(size.id)}
+                    className={`flex items-center justify-between rounded-md border px-3 py-2 text-left transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border hover:bg-muted/40"
+                    }`}
+                  >
+                    <span className="text-sm font-medium">Tam {size.number}</span>
+                    <span className="text-xs text-muted-foreground">Estoque: {size.stock}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleSizePickerOpenChange(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmAddSelectedSize}
+              disabled={sizePickerOptions.length === 0 || !selectedSizeOptionId}
+            >
+              Adicionar ao carrinho
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Clear Cart Dialog */}
       <AlertDialog open={clearCartOpen} onOpenChange={setClearCartOpen}>
