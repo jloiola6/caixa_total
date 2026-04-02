@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { OfflineIndicator } from "@/components/offline-indicator";
 import { useAuth } from "@/contexts/auth-context";
 
 const AUTH_PATHS = ["/login", "/esqueci-senha", "/redefinir-senha"];
@@ -24,17 +25,23 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   if (isAuthPage) {
     return (
-      <div className="min-h-svh flex items-center justify-center bg-muted/30 p-4">
-        {children}
-      </div>
+      <>
+        <OfflineIndicator />
+        <div className="min-h-svh flex items-center justify-center bg-muted/30 p-4">
+          {children}
+        </div>
+      </>
     );
   }
 
   if (!loading && !user) {
     return (
-      <div className="min-h-svh flex items-center justify-center bg-muted/30 p-4">
-        <p className="text-muted-foreground">Redirecionando para o login...</p>
-      </div>
+      <>
+        <OfflineIndicator />
+        <div className="min-h-svh flex items-center justify-center bg-muted/30 p-4">
+          <p className="text-muted-foreground">Redirecionando para o login...</p>
+        </div>
+      </>
     );
   }
 
@@ -42,7 +49,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-12 items-center gap-2 border-b border-border px-4 md:hidden">
+        <OfflineIndicator />
+        <header className="flex h-12 items-center gap-2 px-4 md:hidden">
           <SidebarTrigger />
           <span className="text-sm font-semibold">CaixaTotal</span>
         </header>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ShoppingCart, Package, BarChart3, RefreshCw, Shield, LogOut, Bell } from "lucide-react"
+import { ShoppingCart, Package, BarChart3, RefreshCw, Shield, LogOut, Bell, AlertTriangle } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
 import { getUnreadNotificationsCount } from "@/lib/api"
 import { getStoredStoreId } from "@/lib/auth-api"
+import { getStoredSyncConflictCount, SYNC_CONFLICT_STATUS_EVENT } from "@/lib/sync-conflict-status"
 
 const navItems = [
   { title: "Caixa", href: "/caixa", icon: ShoppingCart },
@@ -38,6 +39,7 @@ export function AppSidebar() {
   const { user, logout } = useAuth()
   const [syncOpen, setSyncOpen] = useState(false)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
+  const [syncConflictCount, setSyncConflictCount] = useState(() => getStoredSyncConflictCount())
 
   useEffect(() => {
     let cancelled = false
@@ -68,6 +70,19 @@ export function AppSidebar() {
       window.removeEventListener("focus", onFocus)
       window.removeEventListener("storage", onStorage)
       window.removeEventListener("notifications:updated", onNotificationsUpdated)
+    }
+  }, [])
+
+  useEffect(() => {
+    const onSyncConflictStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ count?: unknown }>).detail
+      const count = Number(detail?.count ?? 0)
+      setSyncConflictCount(Number.isFinite(count) && count > 0 ? Math.floor(count) : 0)
+    }
+
+    window.addEventListener(SYNC_CONFLICT_STATUS_EVENT, onSyncConflictStatus)
+    return () => {
+      window.removeEventListener(SYNC_CONFLICT_STATUS_EVENT, onSyncConflictStatus)
     }
   }, [])
 
@@ -150,7 +165,14 @@ export function AppSidebar() {
                 onClick={() => setSyncOpen(true)}
                 className="w-full justify-center"
               >
-                <RefreshCw className="size-4" />
+                {syncConflictCount > 0 ? (
+                  <>
+                    <AlertTriangle className="size-4 text-amber-500" />
+                    <span className="sr-only">{syncConflictCount} conflito(s) pendente(s)</span>
+                  </>
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
                 <span>Sincronizar</span>
               </SidebarMenuButton>
             )}

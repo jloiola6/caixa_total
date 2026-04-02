@@ -22,6 +22,7 @@ import {
 import { getSyncState, type ServerSyncState } from "@/lib/api"
 import { getStoredStoreId } from "@/lib/auth-api"
 import { computeConflicts, applyServerState, type ConflictItem } from "@/lib/sync-conflict"
+import { dispatchSyncConflictStatus } from "@/lib/sync-conflict-status"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 
@@ -54,6 +55,7 @@ export function SyncModal({
       setServerState(server)
       const list = await computeConflicts(server)
       setConflicts(list)
+      dispatchSyncConflictStatus(list.length)
       setStep("result")
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -67,6 +69,7 @@ export function SyncModal({
     setStep("syncing")
     try {
       await applyServerState(serverState)
+      dispatchSyncConflictStatus(0)
       toast.success("Dados do servidor aplicados localmente.")
       onOpenChange(false)
       reset()
@@ -84,6 +87,7 @@ export function SyncModal({
       const { syncToServer } = await import("@/lib/sync")
       const result = await syncToServer()
       if (result.ok) {
+        dispatchSyncConflictStatus(0)
         toast.success("Dados locais enviados ao servidor.")
         onOpenChange(false)
         reset()
@@ -104,6 +108,7 @@ export function SyncModal({
       const { syncToServer } = await import("@/lib/sync")
       const result = await syncToServer()
       if (result.ok) {
+        dispatchSyncConflictStatus(0)
         toast.success("Sincronização concluída.")
         onOpenChange(false)
         reset()
