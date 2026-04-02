@@ -41,7 +41,9 @@ import {
 } from "@/lib/db"
 import { formatCurrency } from "@/lib/format"
 import { syncToServer } from "@/lib/sync"
+import { printSaleReceipt } from "@/lib/sale-receipt"
 import type { Product, CartItem, PaymentSplit } from "@/lib/types"
+import { useAuth } from "@/contexts/auth-context"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcut"
 import { toast } from "sonner"
 
@@ -75,6 +77,7 @@ function buildVariantProduct(baseProduct: Product, sizeOption: ProductSizeOption
 }
 
 export default function CaixaPage() {
+  const { user } = useAuth()
   const [query, setQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
@@ -263,6 +266,17 @@ export default function CaixaPage() {
     setSearchResults([])
     setCheckoutOpen(false)
     setSaleCompleteOpen(true)
+
+    const printed = printSaleReceipt({
+      sale: result.sale,
+      saleItems: result.saleItems,
+      operatorName: user?.name ?? null,
+      storeName: user?.store?.name ?? null,
+    })
+    if (!printed) {
+      toast.error("Venda registrada, mas nao foi possivel abrir impressao do comprovante")
+    }
+
     syncToServer().catch(() => {})
   }
 
