@@ -89,7 +89,7 @@ function toProductCategory(s: string): ProductCategory {
 }
 
 function toPaymentMethod(s: string): PaymentMethod {
-  if (["dinheiro", "credito", "debito", "fiado"].includes(s)) return s as PaymentMethod;
+  if (["dinheiro", "credito", "debito", "pix", "fiado"].includes(s)) return s as PaymentMethod;
   return "dinheiro";
 }
 

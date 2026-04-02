@@ -58,12 +58,13 @@ export interface ClothingSize {
 
 // --------------- Payment ---------------
 
-export type PaymentMethod = "dinheiro" | "credito" | "debito" | "fiado"
+export type PaymentMethod = "dinheiro" | "credito" | "debito" | "pix" | "fiado"
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   dinheiro: "Dinheiro",
   credito: "Credito",
   debito: "Debito",
+  pix: "PIX",
   fiado: "Fiado",
 }
 

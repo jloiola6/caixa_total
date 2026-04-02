@@ -19,6 +19,7 @@ enum PaymentMethod {
   dinheiro
   credito
   debito
+  pix
   fiado
 }
 

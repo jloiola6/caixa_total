@@ -155,7 +155,7 @@ export function OfflineIndicator() {
   const isConflictMode = !isOffline && hasPendingConflicts;
   const containerClass = isConflictMode
     ? "animate-[pulse_1.6s_ease-in-out_infinite] border-y border-yellow-300/80 bg-[linear-gradient(to_bottom,oklch(0.78_0.12_92)_0%,oklch(0.88_0.1_95)_48%,var(--background)_100%)] px-4 py-2 shadow-[0_0_0_1px_rgba(253,224,71,0.25)]"
-    : "animate-[pulse_1.6s_ease-in-out_infinite] border-y border-yellow-300/80 bg-[linear-gradient(to_bottom,oklch(0.45_0.18_25)_0%,oklch(0.56_0.2_25)_48%,var(--background)_100%)] px-4 py-2 shadow-[0_0_0_1px_rgba(253,224,71,0.25)]";
+    : "border-y border-yellow-300/80 bg-[linear-gradient(to_bottom,oklch(0.45_0.18_25)_0%,oklch(0.56_0.2_25)_48%,var(--background)_100%)] px-4 py-2 shadow-[0_0_0_1px_rgba(253,224,71,0.25)]";
   const contentClass = isConflictMode
     ? "flex items-center justify-center gap-2 text-xs font-medium text-zinc-900 [text-shadow:0_1px_1px_rgba(255,255,255,0.25)] dark:text-gray-100 dark:[text-shadow:0_1px_2px_rgba(0,0,0,0.45)] sm:text-sm"
     : "flex items-center justify-center gap-2 text-xs font-medium text-gray-300 [text-shadow:0_1px_2px_rgba(0,0,0,0.45)] sm:text-sm";

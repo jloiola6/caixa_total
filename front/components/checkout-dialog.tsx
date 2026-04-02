@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Plus, Trash2, CreditCard, Banknote, Landmark, HandCoins } from "lucide-react"
+import { Plus, Trash2, CreditCard, Banknote, Landmark, HandCoins, QrCode } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,7 @@ const PAYMENT_ICONS: Record<PaymentMethod, React.ReactNode> = {
   dinheiro: <Banknote className="size-4" />,
   credito: <CreditCard className="size-4" />,
   debito: <Landmark className="size-4" />,
+  pix: <QrCode className="size-4" />,
   fiado: <HandCoins className="size-4" />,
 }
 
