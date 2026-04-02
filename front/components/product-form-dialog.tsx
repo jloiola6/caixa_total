@@ -108,6 +108,7 @@ export function ProductFormDialog({
   product,
   onSaved,
 }: ProductFormDialogProps) {
+  const isMobile = useIsMobile()
   const [name, setName] = useState("")
   const [sku, setSku] = useState("")
   const [barcode, setBarcode] = useState("")
@@ -571,6 +572,9 @@ export function ProductFormDialog({
                     >
                       {stepLabel}
                     </span>
+                    {index < FORM_STEPS.length - 1 && (
+                      <div className="ml-3 hidden h-px flex-1 bg-zinc-300 sm:block" />
+                    )}
                   </div>
                 )
               })}
@@ -1014,19 +1018,19 @@ export function ProductFormDialog({
                   </div>
                 )}
 
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                <div className="rounded-xl border border-border bg-secondary/40 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-secondary-foreground/75">
                     Resumo
                   </p>
                   <div className="mt-3 grid gap-2 text-sm sm:grid-cols-[120px_1fr]">
-                    <span className="text-zinc-600">Nome</span>
-                    <span className="font-medium text-zinc-900">{name || "-"}</span>
-                    <span className="text-zinc-600">Categoria</span>
-                    <span className="font-medium text-zinc-900">
+                    <span className="text-secondary-foreground/75">Nome</span>
+                    <span className="font-medium text-secondary-foreground">{name || "-"}</span>
+                    <span className="text-secondary-foreground/75">Categoria</span>
+                    <span className="font-medium text-secondary-foreground">
                       {PRODUCT_CATEGORY_LABELS[category]}
                     </span>
-                    <span className="text-zinc-600">Estoque inicial</span>
-                    <span className="font-medium text-zinc-900">{summaryStock} un.</span>
+                    <span className="text-secondary-foreground/75">Estoque inicial</span>
+                    <span className="font-medium text-secondary-foreground">{summaryStock} un.</span>
                   </div>
                 </div>
               </div>
@@ -1054,7 +1058,7 @@ export function ProductFormDialog({
               </Button>
             )}
 
-            {!useIsMobile() && (
+            {!isMobile && (
             <div className="flex items-center gap-2">
               {FORM_STEPS.map((_, index) => (
                 <span
