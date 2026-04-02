@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Plus, Search, Pencil, PackageMinus, Trash2, Filter, Percent, Download } from "lucide-react"
+import { Plus, Search, Pencil, PackageMinus, Trash2, Filter, Download, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -32,6 +32,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ProductFormDialog } from "@/components/product-form-dialog"
 import { StockAdjustDialog } from "@/components/stock-adjust-dialog"
+import { StockHistoryDialog } from "@/components/stock-history-dialog"
 import { BulkPriceDialog } from "@/components/bulk-price-dialog"
 import { ProductExportDialog } from "@/components/product-export-dialog"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -184,6 +185,7 @@ export default function ProdutosPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [stockProduct, setStockProduct] = useState<Product | null>(null)
+  const [historyProduct, setHistoryProduct] = useState<Product | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [bulkPriceOpen, setBulkPriceOpen] = useState(false)
@@ -460,6 +462,15 @@ export default function ProdutosPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="size-8"
+                            onClick={() => setHistoryProduct(product)}
+                            title="Historico de estoque"
+                          >
+                            <History className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className="size-8 text-destructive hover:text-destructive"
                             onClick={() => setDeleteTarget(product)}
                             title="Excluir"
@@ -547,6 +558,15 @@ export default function ProdutosPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="size-7"
+                          onClick={() => setHistoryProduct(product)}
+                          title="Historico de estoque"
+                        >
+                          <History className="size-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className="size-7 text-destructive hover:text-destructive"
                           onClick={() => setDeleteTarget(product)}
                         >
@@ -585,6 +605,11 @@ export default function ProdutosPage() {
         onOpenChange={(open) => !open && setStockProduct(null)}
         product={stockProduct}
         onAdjusted={loadProducts}
+      />
+      <StockHistoryDialog
+        open={!!historyProduct}
+        onOpenChange={(open) => !open && setHistoryProduct(null)}
+        product={historyProduct}
       />
 
       <BulkPriceDialog
