@@ -238,7 +238,6 @@ export function SyncModal({
                 variant="outline"
                 size="sm"
                 onClick={handlePriorizarServidor}
-                disabled={step === "syncing"}
               >
                 <Server className="size-4 mr-1" />
                 Priorizar servidor
@@ -247,7 +246,6 @@ export function SyncModal({
                 variant="outline"
                 size="sm"
                 onClick={handlePriorizarLocal}
-                disabled={step === "syncing"}
               >
                 <HardDrive className="size-4 mr-1" />
                 Priorizar local
@@ -257,9 +255,6 @@ export function SyncModal({
               <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancelar
               </Button>
-              {step === "syncing" && (
-                <Loader2 className="size-5 animate-spin text-muted-foreground" />
-              )}
             </DialogFooter>
           </>
         )}

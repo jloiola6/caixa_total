@@ -86,11 +86,27 @@ model Product {
   description   String?
   controlNumber String?
   tennisSizes   TennisSize[]
+  clothingSizes ClothingSize[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
 
 model TennisSize {
+  id        String   @id
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  number    String
+  stock     Int      @default(0)
+  sku       String?
+  barcode   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([barcode])
+}
+
+model ClothingSize {
   id        String   @id
   productId String
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)

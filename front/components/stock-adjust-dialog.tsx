@@ -40,21 +40,26 @@ export function StockAdjustDialog({
 }: StockAdjustDialogProps) {
   const [delta, setDelta] = useState("")
   const [reason, setReason] = useState("")
-  const [selectedTennisSizeId, setSelectedTennisSizeId] = useState("")
+  const [selectedSizeId, setSelectedSizeId] = useState("")
 
-  const tennisSizeOptions = useMemo(
-    () => (product?.category === "tenis" ? product.tennisSizes ?? [] : []),
+  const sizeOptions = useMemo(
+    () =>
+      product?.category === "tenis"
+        ? product.tennisSizes ?? []
+        : product?.category === "roupas"
+          ? product.clothingSizes ?? []
+          : [],
     [product]
   )
 
   useEffect(() => {
     if (!open) return
-    if (tennisSizeOptions.length > 0) {
-      setSelectedTennisSizeId((prev) => prev || tennisSizeOptions[0].id)
+    if (sizeOptions.length > 0) {
+      setSelectedSizeId((prev) => prev || sizeOptions[0].id)
     } else {
-      setSelectedTennisSizeId("")
+      setSelectedSizeId("")
     }
-  }, [open, tennisSizeOptions])
+  }, [open, sizeOptions])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -70,7 +75,7 @@ export function StockAdjustDialog({
       product.id,
       value,
       reason || null,
-      product.category === "tenis" ? selectedTennisSizeId : null
+      product.category === "tenis" || product.category === "roupas" ? selectedSizeId : null
     )
     if (!result) {
       toast.error("Estoque nao pode ficar negativo")
@@ -78,8 +83,8 @@ export function StockAdjustDialog({
     }
 
     const selectedLabel =
-      product.category === "tenis"
-        ? tennisSizeOptions.find((size) => size.id === selectedTennisSizeId)?.number
+      product.category === "tenis" || product.category === "roupas"
+        ? sizeOptions.find((size) => size.id === selectedSizeId)?.number
         : null
     toast.success(
       `Estoque ${value > 0 ? "acrescido" : "reduzido"} em ${Math.abs(value)} unidade(s)${
@@ -96,15 +101,15 @@ export function StockAdjustDialog({
   function handleClose() {
     setDelta("")
     setReason("")
-    setSelectedTennisSizeId("")
+    setSelectedSizeId("")
     onOpenChange(false)
   }
 
   if (!product) return null
 
   const parsedDelta = parseInt(delta, 10) || 0
-  const selectedTennisSize = tennisSizeOptions.find((size) => size.id === selectedTennisSizeId) ?? null
-  const currentStock = selectedTennisSize ? selectedTennisSize.stock : product.stock
+  const selectedSize = sizeOptions.find((size) => size.id === selectedSizeId) ?? null
+  const currentStock = selectedSize ? selectedSize.stock : product.stock
   const newStock = currentStock + parsedDelta
 
   return (
@@ -115,15 +120,15 @@ export function StockAdjustDialog({
           <DialogDescription>{product.name}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {product.category === "tenis" && tennisSizeOptions.length > 0 && (
+          {(product.category === "tenis" || product.category === "roupas") && sizeOptions.length > 0 && (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="stock-size">Numeracao</Label>
-              <Select value={selectedTennisSizeId} onValueChange={setSelectedTennisSizeId}>
+              <Label htmlFor="stock-size">Tamanho</Label>
+              <Select value={selectedSizeId} onValueChange={setSelectedSizeId}>
                 <SelectTrigger id="stock-size">
                   <SelectValue placeholder="Selecione..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {tennisSizeOptions.map((size) => (
+                  {sizeOptions.map((size) => (
                     <SelectItem key={size.id} value={size.id}>
                       {`Tam ${size.number} (Estoque: ${size.stock})`}
                     </SelectItem>
@@ -138,7 +143,7 @@ export function StockAdjustDialog({
 
           <div className="flex items-center justify-between rounded-md bg-muted px-4 py-3">
             <span className="text-sm text-muted-foreground">
-              Estoque atual{selectedTennisSize ? ` (Tam ${selectedTennisSize.number})` : ""}
+              Estoque atual{selectedSize ? ` (Tam ${selectedSize.number})` : ""}
             </span>
             <span className="text-lg font-semibold text-foreground">
               {currentStock}
@@ -200,7 +205,9 @@ export function StockAdjustDialog({
               type="submit"
               disabled={
                 newStock < 0 ||
-                (product.category === "tenis" && tennisSizeOptions.length > 0 && !selectedTennisSizeId)
+                ((product.category === "tenis" || product.category === "roupas") &&
+                  sizeOptions.length > 0 &&
+                  !selectedSizeId)
               }
             >
               Confirmar

@@ -128,6 +128,9 @@ function buildProductFilterOptions(products: Product[]): ProductFilterOptions {
         if (p.category === "tenis" && p.tennisSizes) {
           values.push(...p.tennisSizes.map((size) => size.number))
         }
+        if (p.category === "roupas" && p.clothingSizes) {
+          values.push(...p.clothingSizes.map((size) => size.number))
+        }
         return values
       })
     ),
@@ -155,6 +158,12 @@ function matchesProductFilters(product: Product, filters: ProductFilters): boole
     if (normalizedSingleSize) productSizes.add(normalizedSingleSize)
     if (product.tennisSizes) {
       for (const size of product.tennisSizes) {
+        const normalized = normalizeFilterValue(size.number)
+        if (normalized) productSizes.add(normalized)
+      }
+    }
+    if (product.clothingSizes) {
+      for (const size of product.clothingSizes) {
         const normalized = normalizeFilterValue(size.number)
         if (normalized) productSizes.add(normalized)
       }
@@ -213,6 +222,11 @@ function productSubtitle(product: Product): string {
   if (product.model) parts.push(product.model)
   if (product.category === "tenis" && product.tennisSizes && product.tennisSizes.length > 0) {
     const orderedSizes = [...product.tennisSizes]
+      .map((size) => size.number)
+      .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }))
+    parts.push(`Tams: ${orderedSizes.join(", ")}`)
+  } else if (product.category === "roupas" && product.clothingSizes && product.clothingSizes.length > 0) {
+    const orderedSizes = [...product.clothingSizes]
       .map((size) => size.number)
       .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }))
     parts.push(`Tams: ${orderedSizes.join(", ")}`)
@@ -415,7 +429,7 @@ export default function ProdutosPage() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome, SKU, tipo, marca..."
+            placeholder="Buscar por nome, SKU, tipo, marca, detalhes..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-9"

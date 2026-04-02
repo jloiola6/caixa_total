@@ -9,6 +9,7 @@ import type {
   StockLog,
   AppNotification,
   TennisSize,
+  ClothingSize,
 } from "./types"
 
 // --------------- helpers ---------------
@@ -35,10 +36,14 @@ function formatCurrencyCents(cents: number): string {
   return CURRENCY_FORMATTER.format(cents / 100)
 }
 
-const TENNIS_VARIANT_SEPARATOR = "::"
+const PRODUCT_VARIANT_SEPARATOR = "::"
 
 function legacyTennisSizeId(productId: string, size: string): string {
   return `legacy_${productId}_${size.replace(/\s+/g, "_")}`
+}
+
+function legacyClothingSizeId(productId: string, size: string): string {
+  return `legacy_roupa_${productId}_${size.replace(/\s+/g, "_")}`
 }
 
 function normalizeTennisSizes(
@@ -70,27 +75,72 @@ function normalizeTennisSizes(
   return normalized
 }
 
+function normalizeClothingSizes(
+  clothingSizes: Product["clothingSizes"] | undefined,
+  nowIso: string
+): ClothingSize[] | null {
+  if (!Array.isArray(clothingSizes)) return null
+
+  const seen = new Set<string>()
+  const normalized: ClothingSize[] = []
+  for (const raw of clothingSizes) {
+    const number = (raw?.number ?? "").trim()
+    if (!number) continue
+    const id = (raw?.id ?? randomUUID()).trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+
+    normalized.push({
+      id,
+      number,
+      stock: Math.max(0, Number(raw?.stock ?? 0) || 0),
+      sku: (raw?.sku ?? "").trim() || null,
+      barcode: (raw?.barcode ?? "").trim() || null,
+      createdAt: raw?.createdAt ?? nowIso,
+      updatedAt: raw?.updatedAt ?? nowIso,
+    })
+  }
+
+  return normalized
+}
+
 function buildSellableTennisVariant(product: Product, tennisSize: TennisSize): Product {
   const baseSku = product.sku ? `${product.sku}-${tennisSize.number}` : null
   return {
     ...product,
-    id: `${product.id}${TENNIS_VARIANT_SEPARATOR}${tennisSize.id}`,
+    id: `${product.id}${PRODUCT_VARIANT_SEPARATOR}${tennisSize.id}`,
     name: `${product.name} (Tam ${tennisSize.number})`,
     sku: tennisSize.sku ?? baseSku,
     barcode: tennisSize.barcode ?? null,
     size: tennisSize.number,
     stock: tennisSize.stock,
     tennisSizes: null,
+    clothingSizes: null,
   }
 }
 
-function parseTennisVariantId(id: string): { productId: string; tennisSizeId: string } | null {
-  const splitIndex = id.indexOf(TENNIS_VARIANT_SEPARATOR)
+function buildSellableClothingVariant(product: Product, clothingSize: ClothingSize): Product {
+  const baseSku = product.sku ? `${product.sku}-${clothingSize.number}` : null
+  return {
+    ...product,
+    id: `${product.id}${PRODUCT_VARIANT_SEPARATOR}${clothingSize.id}`,
+    name: `${product.name} (Tam ${clothingSize.number})`,
+    sku: clothingSize.sku ?? baseSku,
+    barcode: clothingSize.barcode ?? null,
+    size: clothingSize.number,
+    stock: clothingSize.stock,
+    tennisSizes: null,
+    clothingSizes: null,
+  }
+}
+
+function parseProductVariantId(id: string): { productId: string; sizeId: string } | null {
+  const splitIndex = id.indexOf(PRODUCT_VARIANT_SEPARATOR)
   if (splitIndex <= 0) return null
   const productId = id.slice(0, splitIndex)
-  const tennisSizeId = id.slice(splitIndex + TENNIS_VARIANT_SEPARATOR.length)
-  if (!productId || !tennisSizeId) return null
-  return { productId, tennisSizeId }
+  const sizeId = id.slice(splitIndex + PRODUCT_VARIANT_SEPARATOR.length)
+  if (!productId || !sizeId) return null
+  return { productId, sizeId }
 }
 
 const OFFLINE_DB_NAME = "caixatotal_offline_db"
@@ -339,9 +389,17 @@ export function getProducts(query?: string): Product[] {
         (p.brand && p.brand.toLowerCase().includes(q)) ||
         (p.model && p.model.toLowerCase().includes(q)) ||
         (p.size && p.size.toLowerCase().includes(q)) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
         (p.controlNumber && p.controlNumber.toLowerCase().includes(q)) ||
         (p.tennisSizes &&
           p.tennisSizes.some(
+            (size) =>
+              size.number.toLowerCase().includes(q) ||
+              (size.sku && size.sku.toLowerCase().includes(q)) ||
+              (size.barcode && size.barcode.toLowerCase().includes(q))
+          )) ||
+        (p.clothingSizes &&
+          p.clothingSizes.some(
             (size) =>
               size.number.toLowerCase().includes(q) ||
               (size.sku && size.sku.toLowerCase().includes(q)) ||
@@ -360,10 +418,14 @@ export function getProductByBarcode(barcode: string): Product | undefined {
 
   for (const product of products) {
     if (product.barcode && product.barcode === barcode) return product
-    if (product.category !== "tenis" || !product.tennisSizes) continue
-    const tennisSize = product.tennisSizes.find((size) => size.barcode && size.barcode === barcode)
-    if (!tennisSize) continue
-    return buildSellableTennisVariant(product, tennisSize)
+    if (product.category === "tenis" && product.tennisSizes) {
+      const tennisSize = product.tennisSizes.find((size) => size.barcode && size.barcode === barcode)
+      if (tennisSize) return buildSellableTennisVariant(product, tennisSize)
+    }
+    if (product.category === "roupas" && product.clothingSizes) {
+      const clothingSize = product.clothingSizes.find((size) => size.barcode && size.barcode === barcode)
+      if (clothingSize) return buildSellableClothingVariant(product, clothingSize)
+    }
   }
   return undefined
 }
@@ -374,6 +436,11 @@ export function getAllBarcodes(): Set<string> {
     if (product.barcode) all.add(product.barcode)
     if (product.tennisSizes) {
       for (const size of product.tennisSizes) {
+        if (size.barcode) all.add(size.barcode)
+      }
+    }
+    if (product.clothingSizes) {
+      for (const size of product.clothingSizes) {
         if (size.barcode) all.add(size.barcode)
       }
     }
@@ -392,6 +459,12 @@ export function getSellableProducts(query?: string): Product[] {
       }
       continue
     }
+    if (product.category === "roupas" && product.clothingSizes && product.clothingSizes.length > 0) {
+      for (const clothingSize of product.clothingSizes) {
+        flattened.push(buildSellableClothingVariant(product, clothingSize))
+      }
+      continue
+    }
     flattened.push(product)
   }
 
@@ -401,12 +474,12 @@ export function getSellableProducts(query?: string): Product[] {
 export function getSellableProductByBarcode(barcode: string): Product | undefined {
   const products = getProducts()
   for (const product of products) {
-    if (product.category !== "tenis") {
+    if (product.category !== "tenis" && product.category !== "roupas") {
       if (product.barcode && product.barcode === barcode) return product
       continue
     }
 
-    if (product.tennisSizes) {
+    if (product.category === "tenis" && product.tennisSizes) {
       const bySizeBarcode = product.tennisSizes.find(
         (size) => size.barcode && size.barcode === barcode
       )
@@ -414,6 +487,16 @@ export function getSellableProductByBarcode(barcode: string): Product | undefine
 
       if (product.tennisSizes.length === 1 && product.barcode === barcode) {
         return buildSellableTennisVariant(product, product.tennisSizes[0])
+      }
+    }
+    if (product.category === "roupas" && product.clothingSizes) {
+      const bySizeBarcode = product.clothingSizes.find(
+        (size) => size.barcode && size.barcode === barcode
+      )
+      if (bySizeBarcode) return buildSellableClothingVariant(product, bySizeBarcode)
+
+      if (product.clothingSizes.length === 1 && product.barcode === barcode) {
+        return buildSellableClothingVariant(product, product.clothingSizes[0])
       }
     }
   }
@@ -432,18 +515,29 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
       ...product,
       updatedAt: now,
     }
-    const normalizedSizes =
+    const normalizedTennisSizes =
       updatedBase.category === "tenis"
         ? normalizeTennisSizes(updatedBase.tennisSizes, now)
         : null
+    const normalizedClothingSizes =
+      updatedBase.category === "roupas"
+        ? normalizeClothingSizes(updatedBase.clothingSizes, now)
+        : null
+    const stockFromVariants =
+      updatedBase.category === "tenis"
+        ? (normalizedTennisSizes ?? []).reduce((sum, size) => sum + size.stock, 0)
+        : updatedBase.category === "roupas"
+          ? (normalizedClothingSizes ?? []).reduce((sum, size) => sum + size.stock, 0)
+          : updatedBase.stock
     const updated: Product = {
       ...updatedBase,
-      stock:
-        updatedBase.category === "tenis"
-          ? (normalizedSizes ?? []).reduce((sum, size) => sum + size.stock, 0)
-          : updatedBase.stock,
-      size: updatedBase.category === "tenis" ? null : updatedBase.size ?? null,
-      tennisSizes: normalizedSizes,
+      stock: stockFromVariants,
+      size:
+        updatedBase.category === "tenis" || updatedBase.category === "roupas"
+          ? null
+          : updatedBase.size ?? null,
+      tennisSizes: normalizedTennisSizes,
+      clothingSizes: normalizedClothingSizes,
     }
     const idx = products.findIndex((p) => p.id === existing.id)
     products[idx] = updated
@@ -451,9 +545,13 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
     return updated
   }
 
-  const normalizedNewSizes =
+  const normalizedNewTennisSizes =
     product.category === "tenis"
       ? normalizeTennisSizes(product.tennisSizes, now)
+      : null
+  const normalizedNewClothingSizes =
+    product.category === "roupas"
+      ? normalizeClothingSizes(product.clothingSizes, now)
       : null
 
   const newProduct: Product = {
@@ -463,7 +561,9 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
     barcode: product.barcode ?? null,
     stock:
       product.category === "tenis"
-        ? (normalizedNewSizes ?? []).reduce((sum, size) => sum + size.stock, 0)
+        ? (normalizedNewTennisSizes ?? []).reduce((sum, size) => sum + size.stock, 0)
+        : product.category === "roupas"
+          ? (normalizedNewClothingSizes ?? []).reduce((sum, size) => sum + size.stock, 0)
         : product.stock ?? 0,
     priceCents: product.priceCents,
     costCents: product.costCents ?? null,
@@ -472,11 +572,12 @@ export function upsertProduct(product: Partial<Product> & { name: string; priceC
     type: product.type ?? null,
     brand: product.brand ?? null,
     model: product.model ?? null,
-    size: product.category === "tenis" ? null : product.size ?? null,
+    size: product.category === "tenis" || product.category === "roupas" ? null : product.size ?? null,
     color: product.color ?? null,
     description: product.description ?? null,
     controlNumber: product.controlNumber ?? null,
-    tennisSizes: normalizedNewSizes,
+    tennisSizes: normalizedNewTennisSizes,
+    clothingSizes: normalizedNewClothingSizes,
     createdAt: now,
     updatedAt: now,
   }
@@ -497,7 +598,7 @@ export function adjustStock(
   productId: string,
   delta: number,
   reason?: string | null,
-  tennisSizeId?: string | null
+  sizeVariantId?: string | null
 ): Product | null {
   const products = read<Product>(getProductsKey())
   const idx = products.findIndex((p) => p.id === productId)
@@ -507,8 +608,8 @@ export function adjustStock(
   const current = products[idx]
 
   if (current.category === "tenis" && current.tennisSizes) {
-    if (!tennisSizeId) return null
-    const sizeIdx = current.tennisSizes.findIndex((size) => size.id === tennisSizeId)
+    if (!sizeVariantId) return null
+    const sizeIdx = current.tennisSizes.findIndex((size) => size.id === sizeVariantId)
     if (sizeIdx === -1) return null
 
     const size = current.tennisSizes[sizeIdx]
@@ -522,6 +623,42 @@ export function adjustStock(
     products[idx] = {
       ...current,
       tennisSizes: nextSizes,
+      stock: nextStock,
+      updatedAt: now,
+    }
+
+    write(getProductsKey(), products)
+
+    const log: StockLog = {
+      id: randomUUID(),
+      productId,
+      productName: `${products[idx].name} Tam ${size.number}`,
+      delta,
+      reason: reason?.trim() || null,
+      createdAt: now,
+    }
+    const logs = read<StockLog>(getStockLogsKey())
+    logs.push(log)
+    write(getStockLogsKey(), logs)
+    return products[idx]
+  }
+
+  if (current.category === "roupas" && current.clothingSizes) {
+    if (!sizeVariantId) return null
+    const sizeIdx = current.clothingSizes.findIndex((size) => size.id === sizeVariantId)
+    if (sizeIdx === -1) return null
+
+    const size = current.clothingSizes[sizeIdx]
+    const newSizeStock = size.stock + delta
+    if (newSizeStock < 0) return null
+
+    const nextSizes = current.clothingSizes.map((item, index) =>
+      index === sizeIdx ? { ...item, stock: newSizeStock, updatedAt: now } : item
+    )
+    const nextStock = nextSizes.reduce((sum, item) => sum + item.stock, 0)
+    products[idx] = {
+      ...current,
+      clothingSizes: nextSizes,
       stock: nextStock,
       updatedAt: now,
     }
@@ -660,13 +797,24 @@ export function createSale(
 
   // Validate stock
   for (const item of items) {
-    const tennisVariant = parseTennisVariantId(item.product.id)
-    if (tennisVariant) {
-      const parent = products.find((pr) => pr.id === tennisVariant.productId)
-      if (!parent || parent.category !== "tenis" || !parent.tennisSizes) return null
-      const size = parent.tennisSizes.find((ts) => ts.id === tennisVariant.tennisSizeId)
-      if (!size || size.stock < item.qty) return null
-      continue
+    const productVariant = parseProductVariantId(item.product.id)
+    if (productVariant) {
+      const parent = products.find((pr) => pr.id === productVariant.productId)
+      if (!parent) return null
+
+      if (parent.category === "tenis" && parent.tennisSizes) {
+        const size = parent.tennisSizes.find((ts) => ts.id === productVariant.sizeId)
+        if (!size || size.stock < item.qty) return null
+        continue
+      }
+
+      if (parent.category === "roupas" && parent.clothingSizes) {
+        const size = parent.clothingSizes.find((ts) => ts.id === productVariant.sizeId)
+        if (!size || size.stock < item.qty) return null
+        continue
+      }
+
+      return null
     }
 
     const p = products.find((pr) => pr.id === item.product.id)
@@ -676,32 +824,56 @@ export function createSale(
   // Deduct stock
   for (const item of items) {
     const now = new Date().toISOString()
-    const tennisVariant = parseTennisVariantId(item.product.id)
-    if (tennisVariant) {
-      const parentIdx = products.findIndex((pr) => pr.id === tennisVariant.productId)
+    const productVariant = parseProductVariantId(item.product.id)
+    if (productVariant) {
+      const parentIdx = products.findIndex((pr) => pr.id === productVariant.productId)
       if (parentIdx === -1) return null
       const parent = products[parentIdx]
-      if (parent.category !== "tenis" || !parent.tennisSizes) return null
+      if (parent.category === "tenis" && parent.tennisSizes) {
+        const sizeIdx = parent.tennisSizes.findIndex((ts) => ts.id === productVariant.sizeId)
+        if (sizeIdx === -1) return null
+        const size = parent.tennisSizes[sizeIdx]
+        if (size.stock < item.qty) return null
 
-      const sizeIdx = parent.tennisSizes.findIndex((ts) => ts.id === tennisVariant.tennisSizeId)
-      if (sizeIdx === -1) return null
-      const size = parent.tennisSizes[sizeIdx]
-      if (size.stock < item.qty) return null
+        const nextSizes = parent.tennisSizes.map((ts, index) =>
+          index === sizeIdx
+            ? { ...ts, stock: ts.stock - item.qty, updatedAt: now }
+            : ts
+        )
+        const totalStock = nextSizes.reduce((sum, ts) => sum + ts.stock, 0)
 
-      const nextSizes = parent.tennisSizes.map((ts, index) =>
-        index === sizeIdx
-          ? { ...ts, stock: ts.stock - item.qty, updatedAt: now }
-          : ts
-      )
-      const totalStock = nextSizes.reduce((sum, ts) => sum + ts.stock, 0)
-
-      products[parentIdx] = {
-        ...parent,
-        tennisSizes: nextSizes,
-        stock: totalStock,
-        updatedAt: now,
+        products[parentIdx] = {
+          ...parent,
+          tennisSizes: nextSizes,
+          stock: totalStock,
+          updatedAt: now,
+        }
+        continue
       }
-      continue
+
+      if (parent.category === "roupas" && parent.clothingSizes) {
+        const sizeIdx = parent.clothingSizes.findIndex((ts) => ts.id === productVariant.sizeId)
+        if (sizeIdx === -1) return null
+        const size = parent.clothingSizes[sizeIdx]
+        if (size.stock < item.qty) return null
+
+        const nextSizes = parent.clothingSizes.map((ts, index) =>
+          index === sizeIdx
+            ? { ...ts, stock: ts.stock - item.qty, updatedAt: now }
+            : ts
+        )
+        const totalStock = nextSizes.reduce((sum, ts) => sum + ts.stock, 0)
+
+        products[parentIdx] = {
+          ...parent,
+          clothingSizes: nextSizes,
+          stock: totalStock,
+          updatedAt: now,
+        }
+        continue
+      }
+
+      return null
     }
 
     const idx = products.findIndex((pr) => pr.id === item.product.id)
@@ -867,16 +1039,19 @@ function migrateProducts() {
         description: products[i].description ?? null,
         controlNumber: products[i].controlNumber ?? null,
         tennisSizes: products[i].tennisSizes ?? null,
+        clothingSizes: products[i].clothingSizes ?? null,
       }
       needsWrite = true
     } else if (
       typeof products[i].type === "undefined" ||
-      typeof products[i].tennisSizes === "undefined"
+      typeof products[i].tennisSizes === "undefined" ||
+      typeof products[i].clothingSizes === "undefined"
     ) {
       products[i] = {
         ...products[i],
         type: products[i].category === "controles" ? products[i].brand ?? null : null,
         tennisSizes: products[i].tennisSizes ?? null,
+        clothingSizes: products[i].clothingSizes ?? null,
       }
       needsWrite = true
     }
@@ -926,6 +1101,7 @@ function migrateProducts() {
           size: null,
           stock: sumStock,
           tennisSizes: normalized ?? [],
+          clothingSizes: null,
         }
         needsWrite = true
       }
@@ -933,6 +1109,63 @@ function migrateProducts() {
       products[i] = {
         ...products[i],
         tennisSizes: null,
+      }
+      needsWrite = true
+    }
+
+    if (products[i].category === "roupas") {
+      let normalized = normalizeClothingSizes(products[i].clothingSizes, now)
+      const currentSize = products[i].size
+      if ((!normalized || normalized.length === 0) && currentSize) {
+        normalized = [
+          {
+            id: legacyClothingSizeId(products[i].id, currentSize),
+            number: currentSize,
+            stock: Math.max(0, products[i].stock),
+            sku: products[i].sku ?? null,
+            barcode: products[i].barcode ?? null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]
+        needsWrite = true
+      } else if ((!normalized || normalized.length === 0) && products[i].stock > 0) {
+        const fallbackSize = "U"
+        normalized = [
+          {
+            id: legacyClothingSizeId(products[i].id, fallbackSize),
+            number: fallbackSize,
+            stock: Math.max(0, products[i].stock),
+            sku: products[i].sku ?? null,
+            barcode: products[i].barcode ?? null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]
+        needsWrite = true
+      }
+
+      const sumStock = (normalized ?? []).reduce((sum, size) => sum + size.stock, 0)
+      const normalizedAsJson = JSON.stringify(normalized ?? [])
+      const currentAsJson = JSON.stringify(products[i].clothingSizes ?? [])
+      if (
+        products[i].size !== null ||
+        products[i].stock !== sumStock ||
+        currentAsJson !== normalizedAsJson
+      ) {
+        products[i] = {
+          ...products[i],
+          size: null,
+          stock: sumStock,
+          clothingSizes: normalized ?? [],
+          tennisSizes: null,
+        }
+        needsWrite = true
+      }
+    } else if (products[i].clothingSizes !== null) {
+      products[i] = {
+        ...products[i],
+        clothingSizes: null,
       }
       needsWrite = true
     }

@@ -90,11 +90,11 @@ interface ProductFormDialogProps {
 
 const CATEGORIES = Object.entries(PRODUCT_CATEGORY_LABELS) as [ProductCategory, string][]
 const CONTROL_TYPE_OPTIONS = ["Televisão", "Receptor", "Ar condicionado", "projetor"] as const
-type TennisSizeRow = { id: string; size: string; stock: number }
+type SizeStockRow = { id: string; size: string; stock: number }
 const FORM_STEPS = ["Identificacao", "Detalhes", "Precos"] as const
 type FormStep = 0 | 1 | 2
 
-function createTennisSizeRow(): TennisSizeRow {
+function createSizeStockRow(): SizeStockRow {
   const id =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
@@ -123,7 +123,8 @@ export function ProductFormDialog({
   const [color, setColor] = useState("")
   const [description, setDescription] = useState("")
   const [controlNumber, setControlNumber] = useState("")
-  const [tennisSizes, setTennisSizes] = useState<TennisSizeRow[]>(() => [createTennisSizeRow()])
+  const [tennisSizes, setTennisSizes] = useState<SizeStockRow[]>(() => [createSizeStockRow()])
+  const [clothingSizes, setClothingSizes] = useState<SizeStockRow[]>(() => [createSizeStockRow()])
   const [barcodeSvg, setBarcodeSvg] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState<FormStep>(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -177,7 +178,24 @@ export function ProductFormDialog({
       } else {
         setTennisSizes([
           {
-            id: createTennisSizeRow().id,
+            id: createSizeStockRow().id,
+            size: product.size || "",
+            stock: product.stock,
+          },
+        ])
+      }
+      if (product.category === "roupas" && product.clothingSizes && product.clothingSizes.length > 0) {
+        setClothingSizes(
+          product.clothingSizes.map((item) => ({
+            id: item.id,
+            size: item.number,
+            stock: item.stock,
+          }))
+        )
+      } else {
+        setClothingSizes([
+          {
+            id: createSizeStockRow().id,
             size: product.size || "",
             stock: product.stock,
           },
@@ -200,7 +218,8 @@ export function ProductFormDialog({
       setColor("")
       setDescription("")
       setControlNumber("")
-      setTennisSizes([createTennisSizeRow()])
+      setTennisSizes([createSizeStockRow()])
+      setClothingSizes([createSizeStockRow()])
       if (open) {
         const generated = generateBarcodeForForm(false)
         if (!generated) {
@@ -217,9 +236,12 @@ export function ProductFormDialog({
   useEffect(() => {
     if (isEditing) return
     if (category === "tenis" && tennisSizes.length === 0) {
-      setTennisSizes([createTennisSizeRow()])
+      setTennisSizes([createSizeStockRow()])
     }
-  }, [category, isEditing, tennisSizes.length])
+    if (category === "roupas" && clothingSizes.length === 0) {
+      setClothingSizes([createSizeStockRow()])
+    }
+  }, [category, clothingSizes.length, isEditing, tennisSizes.length])
 
   useEffect(() => {
     if (open) {
@@ -385,12 +407,78 @@ export function ProductFormDialog({
           createdAt: nowIso,
           updatedAt: nowIso,
         })),
+        clothingSizes: null,
       })
 
       toast.success(
         isEditing
           ? "Tenis atualizado com sucesso"
           : `Tenis cadastrado com ${normalized.length} numeracao(oes)`
+      )
+      onOpenChange(false)
+      onSaved()
+      syncToServer().catch(() => {})
+      return
+    }
+
+    if (category === "roupas") {
+      const normalized = clothingSizes
+        .map((row) => ({
+          id: row.id,
+          size: row.size.trim(),
+          stock: Number.isFinite(row.stock) ? Math.max(0, Math.floor(row.stock)) : 0,
+        }))
+        .filter((row) => row.size !== "")
+
+      if (normalized.length === 0) {
+        toast.error("Adicione ao menos um tamanho para a roupa")
+        return
+      }
+
+      const seen = new Set<string>()
+      for (const row of normalized) {
+        const key = row.size.toLowerCase()
+        if (seen.has(key)) {
+          toast.error(`Tamanho duplicado: ${row.size}`)
+          return
+        }
+        seen.add(key)
+      }
+
+      const nowIso = new Date().toISOString()
+      upsertProduct({
+        id: product?.id,
+        name: name.trim(),
+        sku: sku.trim() || null,
+        barcode: barcode.trim() || null,
+        priceCents,
+        costCents: costCents > 0 ? costCents : null,
+        stock: normalized.reduce((sum, row) => sum + row.stock, 0),
+        category,
+        imageUrl,
+        type: null,
+        brand: brand.trim() || null,
+        model: model.trim() || null,
+        size: null,
+        color: color.trim() || null,
+        description: description.trim() || null,
+        controlNumber: null,
+        tennisSizes: null,
+        clothingSizes: normalized.map((row) => ({
+          id: row.id,
+          number: row.size,
+          stock: row.stock,
+          sku: null,
+          barcode: null,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        })),
+      })
+
+      toast.success(
+        isEditing
+          ? "Roupa atualizada com sucesso"
+          : `Roupa cadastrada com ${normalized.length} tamanho(s)`
       )
       onOpenChange(false)
       onSaved()
@@ -426,8 +514,9 @@ export function ProductFormDialog({
   const showBrand = category === "roupas" || category === "tenis"
   const showControlType = category === "controles"
   const showModel = category === "tenis" || category === "controles" || category === "eletronicos"
-  const showSize = category === "roupas"
+  const showSize = false
   const showTennisSizesTable = category === "tenis"
+  const showClothingSizesTable = category === "roupas"
   const showColor = category === "roupas" || category === "tenis"
   const showControlNumber = category === "controles"
   const showDescription = true
@@ -437,7 +526,9 @@ export function ProductFormDialog({
   const summaryStock =
     category === "tenis"
       ? tennisSizes.reduce((sum, row) => sum + (Number.isFinite(row.stock) ? Math.max(0, row.stock) : 0), 0)
-      : stock
+      : category === "roupas"
+        ? clothingSizes.reduce((sum, row) => sum + (Number.isFinite(row.stock) ? Math.max(0, row.stock) : 0), 0)
+        : stock
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -750,7 +841,7 @@ export function ProductFormDialog({
                   </div>
                 </div>
 
-                {!isEditing && category !== "tenis" && (
+                {!isEditing && category !== "tenis" && category !== "roupas" && (
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="prod-stock">Estoque Inicial</Label>
                     <Input
@@ -775,7 +866,7 @@ export function ProductFormDialog({
                         size="sm"
                         className="gap-1.5"
                         onClick={() =>
-                          setTennisSizes((prev) => [...prev, createTennisSizeRow()])
+                          setTennisSizes((prev) => [...prev, createSizeStockRow()])
                         }
                       >
                         <Plus className="size-3.5" />
@@ -834,6 +925,85 @@ export function ProductFormDialog({
                                 })
                               }
                               title="Remover numeracao"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {showClothingSizesTable && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Tamanhos e Estoque *</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() =>
+                          setClothingSizes((prev) => [...prev, createSizeStockRow()])
+                        }
+                      >
+                        <Plus className="size-3.5" />
+                        Adicionar
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <div className="grid grid-cols-[minmax(0,1fr)_88px_40px] sm:grid-cols-[1fr_120px_44px] bg-muted/40 px-2 py-2 text-xs font-medium text-muted-foreground sm:px-3">
+                        <span>Tamanho</span>
+                        <span>Estoque</span>
+                        <span></span>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto divide-y divide-border">
+                        {clothingSizes.map((row) => (
+                          <div
+                            key={row.id}
+                            className="grid grid-cols-[minmax(0,1fr)_88px_40px] sm:grid-cols-[1fr_120px_44px] items-center gap-2 p-2"
+                          >
+                            <Input
+                              value={row.size}
+                              onChange={(e) =>
+                                setClothingSizes((prev) =>
+                                  prev.map((item) =>
+                                    item.id === row.id ? { ...item, size: e.target.value } : item
+                                  )
+                                )
+                              }
+                              placeholder="Ex: P, M, G, 42..."
+                            />
+                            <Input
+                              type="number"
+                              min={0}
+                              value={row.stock}
+                              onFocus={handleZeroPrefixedNumberFocus}
+                              onChange={(e) =>
+                                setClothingSizes((prev) =>
+                                  prev.map((item) =>
+                                    item.id === row.id
+                                      ? { ...item, stock: Math.max(0, parseInt(e.target.value) || 0) }
+                                      : item
+                                  )
+                                )
+                              }
+                              placeholder="0"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive hover:text-destructive"
+                              disabled={clothingSizes.length === 1}
+                              onClick={() =>
+                                setClothingSizes((prev) => {
+                                  if (prev.length === 1) return prev
+                                  return prev.filter((item) => item.id !== row.id)
+                                })
+                              }
+                              title="Remover tamanho"
                             >
                               <Trash2 className="size-3.5" />
                             </Button>

@@ -32,6 +32,13 @@ type ProductPayload = {
     sku?: string | null;
     barcode?: string | null;
   }[];
+  clothingSizes?: {
+    id?: string;
+    number?: string | null;
+    stock?: number | null;
+    sku?: string | null;
+    barcode?: string | null;
+  }[];
   createdAt: string;
   updatedAt: string;
 };
@@ -142,6 +149,62 @@ function normalizeTennisSizes(
   return normalized;
 }
 
+function normalizeClothingSizes(
+  payload: ProductPayload
+): Array<{ id: string; number: string; stock: number; sku: string | null; barcode: string | null }> {
+  const sizesFromPayload = Array.isArray(payload.clothingSizes) ? payload.clothingSizes : [];
+  const fallbackLegacySize =
+    (payload.size ?? "").trim() !== ""
+      ? [
+          {
+            id: `legacy_roupa_${payload.id}_${(payload.size ?? "").trim()}`,
+            number: (payload.size ?? "").trim(),
+            stock: payload.stock,
+            sku: payload.sku ?? null,
+            barcode: payload.barcode ?? null,
+          },
+        ]
+      : payload.stock > 0
+        ? [
+            {
+              id: `legacy_roupa_${payload.id}_U`,
+              number: "U",
+              stock: payload.stock,
+              sku: payload.sku ?? null,
+              barcode: payload.barcode ?? null,
+            },
+          ]
+        : [];
+
+  const source = sizesFromPayload.length > 0 ? sizesFromPayload : fallbackLegacySize;
+  const seen = new Set<string>();
+  const normalized: Array<{
+    id: string;
+    number: string;
+    stock: number;
+    sku: string | null;
+    barcode: string | null;
+  }> = [];
+
+  for (const raw of source) {
+    const number = (raw.number ?? "").trim();
+    if (!number) continue;
+    const id = (raw.id ?? crypto.randomUUID()).trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+
+    normalized.push({
+      id,
+      number,
+      stock: Math.max(0, Number(raw.stock ?? 0) || 0),
+      sku: (raw.sku ?? "").trim() || null,
+      barcode: (raw.barcode ?? "").trim() || null,
+    });
+  }
+
+  return normalized;
+}
+
 syncRouter.post("/", async (req, res) => {
   try {
     const body = req.body as SyncBody & { storeId?: string };
@@ -210,11 +273,17 @@ syncRouter.post("/", async (req, res) => {
         p.type ?? (parsedCategory === "controles" ? p.brand ?? null : null);
       const tennisSizes =
         parsedCategory === "tenis" ? normalizeTennisSizes(p) : [];
+      const clothingSizes =
+        parsedCategory === "roupas" ? normalizeClothingSizes(p) : [];
       const resolvedStock =
         parsedCategory === "tenis"
           ? (tennisSizes.length > 0
               ? tennisSizes.reduce((sum, size) => sum + size.stock, 0)
               : p.stock)
+          : parsedCategory === "roupas"
+            ? (clothingSizes.length > 0
+                ? clothingSizes.reduce((sum, size) => sum + size.stock, 0)
+                : p.stock)
           : p.stock;
       await prisma.product.upsert({
         where: { id: p.id },
@@ -232,7 +301,7 @@ syncRouter.post("/", async (req, res) => {
           type: productType,
           brand: p.brand ?? null,
           model: p.model ?? null,
-          size: parsedCategory === "tenis" ? null : p.size ?? null,
+          size: parsedCategory === "tenis" || parsedCategory === "roupas" ? null : p.size ?? null,
           color: p.color ?? null,
           description: p.description ?? null,
           controlNumber: p.controlNumber ?? null,
@@ -251,7 +320,7 @@ syncRouter.post("/", async (req, res) => {
           type: productType,
           brand: p.brand ?? null,
           model: p.model ?? null,
-          size: parsedCategory === "tenis" ? null : p.size ?? null,
+          size: parsedCategory === "tenis" || parsedCategory === "roupas" ? null : p.size ?? null,
           color: p.color ?? null,
           description: p.description ?? null,
           controlNumber: p.controlNumber ?? null,
@@ -294,6 +363,43 @@ syncRouter.post("/", async (req, res) => {
         }
       } else {
         await prisma.tennisSize.deleteMany({ where: { productId: p.id } });
+      }
+
+      if (parsedCategory === "roupas") {
+        await prisma.clothingSize.deleteMany({
+          where: {
+            productId: p.id,
+            ...(clothingSizes.length > 0
+              ? { id: { notIn: clothingSizes.map((size) => size.id) } }
+              : {}),
+          },
+        });
+
+        for (const size of clothingSizes) {
+          await prisma.clothingSize.upsert({
+            where: { id: size.id },
+            create: {
+              id: size.id,
+              productId: p.id,
+              number: size.number,
+              stock: size.stock,
+              sku: size.sku,
+              barcode: size.barcode,
+              createdAt: new Date(p.createdAt),
+              updatedAt: new Date(p.updatedAt),
+            },
+            update: {
+              productId: p.id,
+              number: size.number,
+              stock: size.stock,
+              sku: size.sku,
+              barcode: size.barcode,
+              updatedAt: now,
+            },
+          });
+        }
+      } else {
+        await prisma.clothingSize.deleteMany({ where: { productId: p.id } });
       }
     }
 
@@ -425,7 +531,7 @@ syncRouter.get("/", async (req, res) => {
     const [products, sales, saleItems, salePayments, stockLogs] = await Promise.all([
       prisma.product.findMany({
         where: { ...storeFilter, updatedAt: { gt: sinceDate } },
-        include: { tennisSizes: true },
+        include: { tennisSizes: true, clothingSizes: true },
       }),
       prisma.sale.findMany({
         where: { ...storeFilter, updatedAt: { gt: sinceDate } },
@@ -456,6 +562,11 @@ syncRouter.get("/", async (req, res) => {
       products: products.map((p) => ({
         ...p,
         tennisSizes: p.tennisSizes.map((size) => ({
+          ...size,
+          createdAt: size.createdAt.toISOString(),
+          updatedAt: size.updatedAt.toISOString(),
+        })),
+        clothingSizes: p.clothingSizes.map((size) => ({
           ...size,
           createdAt: size.createdAt.toISOString(),
           updatedAt: size.updatedAt.toISOString(),

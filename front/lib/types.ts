@@ -31,11 +31,22 @@ export interface Product {
   description: string | null
   controlNumber: string | null
   tennisSizes: TennisSize[] | null
+  clothingSizes: ClothingSize[] | null
   createdAt: string
   updatedAt: string
 }
 
 export interface TennisSize {
+  id: string
+  number: string
+  stock: number
+  sku: string | null
+  barcode: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ClothingSize {
   id: string
   number: string
   stock: number
