@@ -693,7 +693,7 @@ export default function ProdutosPage() {
 
                     <button
                       type="button"
-                      className="mt-2 block w-full overflow-hidden rounded-md border border-border bg-muted cursor-zoom-in"
+                      className="mt-2 block w-full overflow-hidden rounded-md border border-border bg-muted cursor-pointer"
                       onClick={() => product.imageUrl && setPreviewProduct(product)}
                       disabled={!product.imageUrl}
                       title={product.imageUrl ? "Ampliar imagem" : "Produto sem imagem"}
