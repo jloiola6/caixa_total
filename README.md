@@ -27,7 +27,7 @@ O Caixa Total foi estruturado para atender um fluxo de operação simples de loj
 
 ### Front-end (`front/`)
 
-A interface usa **Next.js** e mantém parte do fluxo operacional em `localStorage`, principalmente para produtos, vendas, itens de venda e logs de estoque por loja. Depois, esses dados podem ser sincronizados com o backend. Isso permite um uso mais flexível para operação de caixa e consulta local. O front também consome a API para autenticação, administração, sincronização e relatórios em modo somente leitura.
+A interface usa **Next.js** e mantém parte do fluxo operacional em `IndexedDB`, principalmente para produtos, vendas, itens de venda e logs de estoque por loja. Depois, esses dados podem ser sincronizados com o backend. Isso permite um uso mais flexível para operação de caixa e consulta local. O front também consome a API para autenticação, administração, sincronização e relatórios em modo somente leitura.
 
 ### Back-end (`back/`)
 
@@ -40,9 +40,9 @@ A API usa **Express** com **Prisma** sobre **PostgreSQL**. O backend inclui:
 
 ### Dados no navegador (sync server-first)
 
-O front combina **API** e **`localStorage`**:
+O front combina **API** e **`IndexedDB`**:
 
-- Após **login** ou ao **abrir o app já autenticado**, é executado `pullFromServer()` (`front/lib/sync-pull.ts`), que chama `GET /sync` e grava produtos, vendas, itens, pagamentos e logs de estoque no `localStorage`.
+- Após **login** ou ao **abrir o app já autenticado**, é executado `pullFromServer()` (`front/lib/sync-pull.ts`), que chama `GET /sync` e grava produtos, vendas, itens, pagamentos e logs de estoque no `IndexedDB`.
 - Se a rede falhar, mantém-se o que já existir localmente (modo offline).
 - A página de **relatórios** tenta **sempre** as rotas `GET /report/*` primeiro; em falha de rede, usa os dados locais.
 
@@ -568,7 +568,7 @@ Após operações de venda ou ajuste de produto, o front sincroniza os dados loc
 
 Na tela `/relatorios`: receita total, quantidade de vendas, ticket médio, gráfico por período, ranking de produtos e detalhamento.
 
-Os dados vêm **da API quando há conexão**; sem rede, a tela usa o que estiver no `localStorage`. O modo somente leitura (`NEXT_PUBLIC_READ_ONLY=true` ou `?view=report`) continua disponível para cenários específicos de visualização.
+Os dados vêm **da API quando há conexão**; sem rede, a tela usa o que estiver no `IndexedDB`. O modo somente leitura (`NEXT_PUBLIC_READ_ONLY=true` ou `?view=report`) continua disponível para cenários específicos de visualização.
 
 ---
 

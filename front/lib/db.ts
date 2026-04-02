@@ -177,12 +177,12 @@ function readLocalStorageArray<T>(key: string): T[] | null {
   return safeParseArray<T>(localStorage.getItem(key))
 }
 
-function writeLocalStorageBestEffort<T>(key: string, data: T[]) {
+function removeLocalStorageBestEffort(key: string) {
   if (typeof window === "undefined") return
   try {
-    localStorage.setItem(key, JSON.stringify(data))
+    localStorage.removeItem(key)
   } catch {
-    // localStorage pode estourar quota; IndexedDB continua sendo a fonte offline.
+    // Ignora erros de acesso ao localStorage.
   }
 }
 
@@ -272,8 +272,7 @@ function ensureLoaded(key: string) {
   if (loadedKeys.has(key) || loadingKeys.has(key)) return
 
   if (!memoryCache.has(key)) {
-    const localData = readLocalStorageArray<unknown>(key)
-    memoryCache.set(key, localData ?? [])
+    memoryCache.set(key, [])
   }
 
   const startVersion = keyVersions.get(key) ?? 0
@@ -286,18 +285,24 @@ function ensureLoaded(key: string) {
       if (indexedData && indexedData.length > 0) {
         const merged = mergeById(indexedData, currentData)
         memoryCache.set(key, merged)
-        writeLocalStorageBestEffort(key, merged)
         await writeToIndexedDb(key, merged)
       } else {
         await writeToIndexedDb(key, currentData)
       }
     } else if (indexedData) {
       memoryCache.set(key, indexedData)
-      writeLocalStorageBestEffort(key, indexedData)
     } else {
-      await writeToIndexedDb(key, currentData)
+      // Migra legado: apenas no primeiro carregamento, se ainda existir dado antigo no localStorage.
+      const legacyData = readLocalStorageArray<unknown>(key)
+      if (legacyData) {
+        memoryCache.set(key, legacyData)
+        await writeToIndexedDb(key, legacyData)
+      } else {
+        await writeToIndexedDb(key, currentData)
+      }
     }
 
+    removeLocalStorageBestEffort(key)
     loadedKeys.add(key)
     dispatchDataLoadedEvent()
   })()
@@ -324,7 +329,7 @@ function write<T>(key: string, data: T[]) {
   memoryCache.set(key, cloned as unknown[])
   loadedKeys.add(key)
   bumpVersion(key)
-  writeLocalStorageBestEffort(key, cloned)
+  removeLocalStorageBestEffort(key)
   void writeToIndexedDb(key, cloned)
   dispatchDataLoadedEvent()
 }
@@ -344,7 +349,7 @@ export async function writeCollectionAsync<T>(key: string, data: T[]): Promise<v
   memoryCache.set(key, cloned as unknown[])
   loadedKeys.add(key)
   bumpVersion(key)
-  writeLocalStorageBestEffort(key, cloned)
+  removeLocalStorageBestEffort(key)
   await writeToIndexedDb(key, cloned)
   dispatchDataLoadedEvent()
 }

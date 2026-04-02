@@ -19,10 +19,10 @@ Para um resumo rápido, veja também o [README](../README.md).
 Fluxo de dados no navegador:
 
 1. **Login** ou **reabertura do app com token** dispara `pullFromServer()` (`front/lib/sync-pull.ts`).
-2. O front chama `GET /sync` com autenticação e aplica a resposta no `localStorage` via `applyServerState()` (`front/lib/sync-conflict.ts`).
-3. **Relatórios** tentam primeiro as rotas `GET /report/*`; se a rede falhar, usam dados locais (`localStorage`).
+2. O front chama `GET /sync` com autenticação e aplica a resposta no `IndexedDB` via `applyServerState()` (`front/lib/sync-conflict.ts`).
+3. **Relatórios** tentam primeiro as rotas `GET /report/*`; se a rede falhar, usam dados locais (`IndexedDB`).
 
-Assim, **a fonte da verdade em produção é o servidor**; o `localStorage` é cache e fallback offline.
+Assim, **a fonte da verdade em produção é o servidor**; o `IndexedDB` é cache e fallback offline.
 
 ---
 
@@ -273,7 +273,7 @@ Authorization: Bearer <JWT>
 }
 ```
 
-O front persiste isso em chaves de `localStorage` por loja (ver `applyServerState` em `front/lib/sync-conflict.ts`).
+O front persiste isso em coleções no `IndexedDB` por loja (ver `applyServerState` em `front/lib/sync-conflict.ts`).
 
 ### 9.2 `POST /sync`
 
