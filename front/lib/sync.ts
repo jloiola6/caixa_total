@@ -7,6 +7,7 @@ import {
   readCollectionAsync,
 } from "./db"
 import { getStoredStoreId } from "./auth-api"
+import { isOnlineOnlyModeForCurrentStore } from "./offline-mode"
 
 export async function syncToServer(): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -28,6 +29,13 @@ export async function syncToServer(): Promise<{ ok: boolean; error?: string }> {
     )
     return { ok: true }
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    const baseError = e instanceof Error ? e.message : String(e)
+    if (typeof window !== "undefined" && isOnlineOnlyModeForCurrentStore()) {
+      return {
+        ok: false,
+        error: `Modo offline desabilitado para esta loja. Nao foi possivel sincronizar com a API. (${baseError})`,
+      }
+    }
+    return { ok: false, error: baseError }
   }
 }

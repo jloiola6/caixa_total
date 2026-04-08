@@ -27,6 +27,7 @@ import { PercentInput } from "@/components/percent-input"
 import { upsertProduct } from "@/lib/db"
 import { formatCurrency, formatPercentMaskInput } from "@/lib/format"
 import { syncToServer } from "@/lib/sync"
+import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import type { Product } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -107,10 +108,17 @@ export function BulkPriceDialog({
     setConfirmOpen(true)
   }
 
-  function applyChanges() {
+  async function applyChanges() {
     const err = validate()
     if (err) {
       toast.error(err)
+      setConfirmOpen(false)
+      return
+    }
+
+    const onlinePolicyCheck = await ensureOnlinePolicyAllowsWrite()
+    if (!onlinePolicyCheck.allowed) {
+      toast.error(onlinePolicyCheck.error ?? "Operacao bloqueada")
       setConfirmOpen(false)
       return
     }
@@ -138,7 +146,10 @@ export function BulkPriceDialog({
     onOpenChange(false)
     onApplied()
     toast.success(`Preços atualizados (${products.length} produto(s)).`)
-    syncToServer().catch(() => {})
+    const syncResult = await syncToServer()
+    if (!syncResult.ok) {
+      toast.error(syncResult.error ?? "Falha ao sincronizar com o servidor")
+    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("storage"))
     }

@@ -34,12 +34,21 @@ import { Badge } from "@/components/ui/badge"
 import { getUnreadNotificationsCount } from "@/lib/api"
 import { getStoredStoreId } from "@/lib/auth-api"
 import { getStoredSyncConflictCount, SYNC_CONFLICT_STATUS_EVENT } from "@/lib/sync-conflict-status"
+import {
+  getOfflineModeEnabledForCurrentStore,
+  OFFLINE_MODE_CHANGED_EVENT,
+} from "@/lib/offline-mode"
 
-const navItems = [
+const storeUserNavItems = [
   { title: "Caixa", href: "/caixa", icon: ShoppingCart },
   { title: "Produtos", href: "/produtos", icon: Package },
   { title: "Relatorios", href: "/relatorios", icon: BarChart3 },
   { title: "Notificacoes", href: "/notificacoes", icon: Bell },
+  { title: "Configuracoes", href: "/configuracoes", icon: Settings },
+]
+
+const superAdminNavItems = [
+  { title: "Admin", href: "/admin", icon: Shield },
   { title: "Configuracoes", href: "/configuracoes", icon: Settings },
 ]
 
@@ -51,11 +60,29 @@ export function AppSidebar() {
   const [syncOpen, setSyncOpen] = useState(false)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
   const [syncConflictCount, setSyncConflictCount] = useState(() => getStoredSyncConflictCount())
+  const [offlineModeEnabled, setOfflineModeEnabled] = useState(() =>
+    getOfflineModeEnabledForCurrentStore()
+  )
+
+  useEffect(() => {
+    const refreshOfflineMode = () => setOfflineModeEnabled(getOfflineModeEnabledForCurrentStore())
+    refreshOfflineMode()
+    window.addEventListener("storage", refreshOfflineMode)
+    window.addEventListener(OFFLINE_MODE_CHANGED_EVENT, refreshOfflineMode)
+    return () => {
+      window.removeEventListener("storage", refreshOfflineMode)
+      window.removeEventListener(OFFLINE_MODE_CHANGED_EVENT, refreshOfflineMode)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
 
     const load = async () => {
+      if (user?.role !== "STORE_USER") {
+        if (!cancelled) setUnreadNotifications(0)
+        return
+      }
       try {
         const storeId = getStoredStoreId() ?? undefined
         const unreadCount = await getUnreadNotificationsCount({ storeId })
@@ -82,7 +109,7 @@ export function AppSidebar() {
       window.removeEventListener("storage", onStorage)
       window.removeEventListener("notifications:updated", onNotificationsUpdated)
     }
-  }, [])
+  }, [user?.role])
 
   useEffect(() => {
     const onSyncConflictStatus = (event: Event) => {
@@ -107,6 +134,8 @@ export function AppSidebar() {
       setOpenMobile(false)
     }
   }
+
+  const navItems = user?.role === "SUPER_ADMIN" ? superAdminNavItems : storeUserNavItems
 
   return (
     <Sidebar>
@@ -149,20 +178,6 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {user?.role === "SUPER_ADMIN" && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === "/admin"}
-                    tooltip="Admin"
-                  >
-                    <Link href="/admin" onClick={handleNavigate}>
-                      <Shield />
-                      <span>Admin</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -170,7 +185,7 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border px-2 py-3">
         <SidebarGroup>
           <SidebarGroupContent className="flex flex-col gap-0.5">
-            {user?.role === "STORE_USER" && (
+            {user?.role === "STORE_USER" && offlineModeEnabled && (
               <SidebarMenuButton
                 tooltip="Sincronizar"
                 onClick={() => setSyncOpen(true)}

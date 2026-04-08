@@ -1,6 +1,13 @@
 import { getApiUrl, getAuthHeaders } from "./api";
 
-export type Store = { id: string; name: string; slug: string; createdAt: string; updatedAt: string };
+export type Store = {
+  id: string;
+  name: string;
+  slug: string;
+  offlineModeEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type StoreUser = {
   id: string;
@@ -29,7 +36,10 @@ export async function createStore(name: string, slug: string): Promise<Store> {
   return data;
 }
 
-export async function updateStore(id: string, data: { name?: string; slug?: string }): Promise<Store> {
+export async function updateStore(
+  id: string,
+  data: { name?: string; slug?: string; offlineModeEnabled?: boolean }
+): Promise<Store> {
   const res = await fetch(getApiUrl(`/admin/stores/${id}`), {
     method: "PATCH",
     headers: getAuthHeaders(true),

@@ -64,6 +64,7 @@ import {
 } from "@/components/ui/select"
 import { getProducts, deleteProduct, getProductById } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
+import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import { formatCurrency } from "@/lib/format"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
@@ -362,13 +363,23 @@ export default function ProdutosPage() {
     setFormOpen(true)
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!deleteTarget) return
+
+    const onlinePolicyCheck = await ensureOnlinePolicyAllowsWrite()
+    if (!onlinePolicyCheck.allowed) {
+      toast.error(onlinePolicyCheck.error ?? "Operacao bloqueada")
+      return
+    }
+
     deleteProduct(deleteTarget.id)
     toast.success("Produto excluido")
     setDeleteTarget(null)
     loadProducts()
-    syncToServer().catch(() => {})
+    const syncResult = await syncToServer()
+    if (!syncResult.ok) {
+      toast.error(syncResult.error ?? "Falha ao sincronizar com o servidor")
+    }
   }
 
   function stockBadge(stock: number) {

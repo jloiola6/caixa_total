@@ -10,6 +10,10 @@ import {
   getStoredSyncConflictCount,
   SYNC_CONFLICT_STATUS_EVENT,
 } from "@/lib/sync-conflict-status";
+import {
+  getOfflineModeEnabledForCurrentStore,
+  OFFLINE_MODE_CHANGED_EVENT,
+} from "@/lib/offline-mode";
 import { toast } from "sonner";
 
 function getInitialOnlineStatus(): boolean {
@@ -34,6 +38,9 @@ export function OfflineIndicator() {
   const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [syncConflictCount, setSyncConflictCount] = useState(0);
+  const [offlineModeEnabled, setOfflineModeEnabled] = useState(() =>
+    getOfflineModeEnabledForCurrentStore()
+  );
   const wasOfflineRef = useRef(false);
   const checkingConflictsRef = useRef(false);
 
@@ -108,6 +115,17 @@ export function OfflineIndicator() {
   }, []);
 
   useEffect(() => {
+    const refreshOfflineMode = () => setOfflineModeEnabled(getOfflineModeEnabledForCurrentStore());
+    refreshOfflineMode();
+    window.addEventListener("storage", refreshOfflineMode);
+    window.addEventListener(OFFLINE_MODE_CHANGED_EVENT, refreshOfflineMode);
+    return () => {
+      window.removeEventListener("storage", refreshOfflineMode);
+      window.removeEventListener(OFFLINE_MODE_CHANGED_EVENT, refreshOfflineMode);
+    };
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
 
     const verifyConflictsAfterReconnect = async () => {
@@ -140,6 +158,13 @@ export function OfflineIndicator() {
       }
     };
 
+    if (!offlineModeEnabled) {
+      wasOfflineRef.current = isOffline;
+      return () => {
+        mounted = false;
+      };
+    }
+
     if (wasOfflineRef.current && !isOffline) {
       void verifyConflictsAfterReconnect();
     }
@@ -148,14 +173,17 @@ export function OfflineIndicator() {
     return () => {
       mounted = false;
     };
-  }, [isOffline]);
+  }, [isOffline, offlineModeEnabled]);
 
   if (!isOffline && !hasPendingConflicts) return null;
 
   const isConflictMode = !isOffline && hasPendingConflicts;
+  const isOfflineBlockedByPolicy = !offlineModeEnabled && isOffline;
   const containerClass = isConflictMode
     ? "animate-[pulse_1.6s_ease-in-out_infinite] border-y border-yellow-300/80 bg-[linear-gradient(to_bottom,oklch(0.78_0.12_92)_0%,oklch(0.88_0.1_95)_48%,var(--background)_100%)] px-4 py-2 shadow-[0_0_0_1px_rgba(253,224,71,0.25)]"
-    : "border-y border-yellow-300/80 bg-[linear-gradient(to_bottom,oklch(0.45_0.18_25)_0%,oklch(0.56_0.2_25)_48%,var(--background)_100%)] px-4 py-2 shadow-[0_0_0_1px_rgba(253,224,71,0.25)]";
+    : isOfflineBlockedByPolicy
+      ? "border-y border-red-300/80 bg-[linear-gradient(to_bottom,oklch(0.45_0.18_25)_0%,oklch(0.56_0.2_25)_48%,var(--background)_100%)] px-4 py-2 shadow-[0_0_0_1px_rgba(248,113,113,0.35)]"
+      : "border-y border-yellow-300/80 bg-[linear-gradient(to_bottom,oklch(0.45_0.18_25)_0%,oklch(0.56_0.2_25)_48%,var(--background)_100%)] px-4 py-2 shadow-[0_0_0_1px_rgba(253,224,71,0.25)]";
   const contentClass = isConflictMode
     ? "flex items-center justify-center gap-2 text-xs font-medium text-zinc-900 [text-shadow:0_1px_1px_rgba(255,255,255,0.25)] dark:text-gray-100 dark:[text-shadow:0_1px_2px_rgba(0,0,0,0.45)] sm:text-sm"
     : "flex items-center justify-center gap-2 text-xs font-medium text-gray-300 [text-shadow:0_1px_2px_rgba(0,0,0,0.45)] sm:text-sm";
@@ -175,10 +203,14 @@ export function OfflineIndicator() {
           </>
         ) : (
           <>
-            <WifiOff className="size-4 shrink-0 text-yellow-300" />
-            <span className="font-semibold">Modo offline ativo</span>
+            <WifiOff className={`size-4 shrink-0 ${isOfflineBlockedByPolicy ? "text-red-300" : "text-yellow-300"}`} />
+            <span className="font-semibold">
+              {isOfflineBlockedByPolicy ? "Sem conexão com API (offline desabilitado)" : "Modo offline ativo"}
+            </span>
             <span className="hidden sm:inline">
-              Alteracoes ficam locais e sincronizam quando a conexao voltar.
+              {isOfflineBlockedByPolicy
+                ? "Esta loja exige API online para operar."
+                : "Alteracoes ficam locais e sincronizam quando a conexao voltar."}
             </span>
           </>
         )}

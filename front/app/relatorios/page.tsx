@@ -84,6 +84,10 @@ import {
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
+import {
+  getOfflineModeEnabledForCurrentStore,
+  OFFLINE_MODE_CHANGED_EVENT,
+} from "@/lib/offline-mode"
 import type {
   ProductCategory,
   Sale,
@@ -219,6 +223,9 @@ function RelatoriosContent() {
   const [apiLoading, setApiLoading] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [useApi, setUseApi] = useState(false)
+  const [offlineModeEnabled, setOfflineModeEnabled] = useState(() =>
+    getOfflineModeEnabledForCurrentStore()
+  )
 
   const monthDate = useMemo(() => parseMonthDate(selectedMonth), [selectedMonth])
   const weekOptions = useMemo(() => buildWeekOptions(monthDate), [monthDate])
@@ -329,6 +336,17 @@ function RelatoriosContent() {
   }, [startISO, endISO])
 
   useEffect(() => {
+    const refreshOfflineMode = () => setOfflineModeEnabled(getOfflineModeEnabledForCurrentStore())
+    refreshOfflineMode()
+    window.addEventListener("storage", refreshOfflineMode)
+    window.addEventListener(OFFLINE_MODE_CHANGED_EVENT, refreshOfflineMode)
+    return () => {
+      window.removeEventListener("storage", refreshOfflineMode)
+      window.removeEventListener(OFFLINE_MODE_CHANGED_EVENT, refreshOfflineMode)
+    }
+  }, [])
+
+  useEffect(() => {
     setApiLoading(true)
     setApiError(null)
 
@@ -352,12 +370,19 @@ function RelatoriosContent() {
         setUseApi(true)
       })
       .catch((e) => {
-        setApiError(e instanceof Error ? e.message : String(e))
+        const message = e instanceof Error ? e.message : String(e)
+        if (!offlineModeEnabled) {
+          setApiError(`API indisponivel. O modo offline esta desabilitado para esta loja. (${message})`)
+          setUseApi(true)
+          setSourceSales([])
+          return
+        }
+        setApiError(message)
         setUseApi(false)
         loadLocalData()
       })
       .finally(() => setApiLoading(false))
-  }, [startISO, endISO, loadLocalData])
+  }, [startISO, endISO, loadLocalData, offlineModeEnabled])
 
   const productsInRange = useMemo(() => {
     const map = new Map<

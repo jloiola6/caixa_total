@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2 } from "lucide-react"
+import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2, CloudOff } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -15,9 +15,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
+import { getStores, updateStore, type Store } from "@/lib/admin-api"
 import type { Sale, SaleItem } from "@/lib/types"
 import { getDefaultPrinterSettings, getPrinterSettings, savePrinterSettings } from "@/lib/printer-settings"
 import { printSaleReceipt } from "@/lib/sale-receipt"
+import { setOfflineModeEnabledForStore } from "@/lib/offline-mode"
 import { toast } from "sonner"
 
 type InstalledPrinter = {
@@ -36,8 +38,14 @@ export default function ConfiguracoesPage() {
 
   const [loadingPrinters, setLoadingPrinters] = useState(false)
   const [installedPrinters, setInstalledPrinters] = useState<InstalledPrinter[]>([])
+  const [stores, setStores] = useState<Store[]>([])
+  const [storesLoading, setStoresLoading] = useState(false)
+  const [storesSaving, setStoresSaving] = useState(false)
+  const [selectedStoreId, setSelectedStoreId] = useState("")
+  const [storeOfflineModeEnabled, setStoreOfflineModeEnabled] = useState(true)
 
   const isDesktop = typeof window !== "undefined" && Boolean(window.caixaDesktop)
+  const isSuperAdmin = user?.role === "SUPER_ADMIN"
 
   useEffect(() => {
     const settings = getPrinterSettings()
@@ -80,6 +88,27 @@ export default function ConfiguracoesPage() {
     if (!isDesktop) return
     void loadInstalledPrinters()
   }, [isDesktop])
+
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    setStoresLoading(true)
+    getStores()
+      .then((list) => {
+        setStores(list)
+        setSelectedStoreId((current) => current || list[0]?.id || "")
+      })
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Falha ao carregar lojas")
+      })
+      .finally(() => setStoresLoading(false))
+  }, [isSuperAdmin])
+
+  useEffect(() => {
+    if (!selectedStoreId) return
+    const currentStore = stores.find((store) => store.id === selectedStoreId)
+    if (!currentStore) return
+    setStoreOfflineModeEnabled(Boolean(currentStore.offlineModeEnabled))
+  }, [stores, selectedStoreId])
 
   const validationError = useMemo(() => {
     if (!enabled) return null
@@ -174,16 +203,106 @@ export default function ConfiguracoesPage() {
     toast.error(result.error || "Falha ao enviar teste de impressao")
   }
 
+  async function handleSaveOfflineMode() {
+    if (!selectedStoreId) {
+      toast.error("Selecione uma loja para continuar")
+      return
+    }
+
+    setStoresSaving(true)
+    try {
+      const updatedStore = await updateStore(selectedStoreId, {
+        offlineModeEnabled: storeOfflineModeEnabled,
+      })
+      setStores((prev) => prev.map((store) => (store.id === updatedStore.id ? updatedStore : store)))
+      setOfflineModeEnabledForStore(updatedStore.id, updatedStore.offlineModeEnabled)
+      toast.success(
+        updatedStore.offlineModeEnabled
+          ? "Modo offline habilitado para a loja"
+          : "Modo offline desabilitado para a loja"
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao salvar configuracao")
+    } finally {
+      setStoresSaving(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Configuracoes</h1>
         <p className="text-sm text-muted-foreground">
-          Defina como os comprovantes de venda devem ser impressos.
+          {isSuperAdmin
+            ? "Defina as politicas de operacao por loja."
+            : "Defina como os comprovantes de venda devem ser impressos."}
         </p>
       </div>
 
-      <Card>
+      {isSuperAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CloudOff className="size-5" />
+              Modo Offline por Loja
+            </CardTitle>
+            <CardDescription>
+              Quando desabilitado, esta loja passa a depender de API online para operar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="space-y-1.5">
+              <Label>Loja</Label>
+              <Select
+                value={selectedStoreId || undefined}
+                onValueChange={setSelectedStoreId}
+                disabled={storesLoading || stores.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={storesLoading ? "Carregando lojas..." : "Selecione"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name} ({store.slug})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="offline-enabled">Permitir modo offline</Label>
+                <p className="text-xs text-muted-foreground">
+                  Se desligar, a loja precisa de conexao com API para gravar dados.
+                </p>
+              </div>
+              <Switch
+                id="offline-enabled"
+                checked={storeOfflineModeEnabled}
+                onCheckedChange={setStoreOfflineModeEnabled}
+                disabled={!selectedStoreId || storesLoading}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => void handleSaveOfflineMode()}
+                className="gap-2"
+                disabled={!selectedStoreId || storesLoading || storesSaving}
+              >
+                <Save className="size-4" />
+                {storesSaving ? "Salvando..." : "Salvar configuracao"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isSuperAdmin && (
+        <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Printer className="size-5" />
@@ -332,6 +451,7 @@ export default function ConfiguracoesPage() {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   )
 }

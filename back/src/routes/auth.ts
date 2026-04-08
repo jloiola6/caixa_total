@@ -49,7 +49,14 @@ authRouter.post("/login", async (req, res) => {
         name: user.name,
         role: user.role,
         storeId: user.storeId,
-        store: user.store ? { id: user.store.id, name: user.store.name, slug: user.store.slug } : null,
+        store: user.store
+          ? {
+              id: user.store.id,
+              name: user.store.name,
+              slug: user.store.slug,
+              offlineModeEnabled: user.store.offlineModeEnabled,
+            }
+          : null,
       },
     });
   } catch (e) {
@@ -146,7 +153,14 @@ authRouter.get("/me", authMiddleware, async (req, res) => {
       name: user.name,
       role: user.role,
       storeId: user.storeId,
-      store: user.store ? { id: user.store.id, name: user.store.name, slug: user.store.slug } : null,
+      store: user.store
+        ? {
+            id: user.store.id,
+            name: user.store.name,
+            slug: user.store.slug,
+            offlineModeEnabled: user.store.offlineModeEnabled,
+          }
+        : null,
     });
   } catch (e) {
     console.error("Me error:", e);

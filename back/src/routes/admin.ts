@@ -25,7 +25,11 @@ adminRouter.get("/stores", async (_req, res) => {
 
 adminRouter.post("/stores", async (req, res) => {
   try {
-    const { name, slug } = req.body as { name?: string; slug?: string };
+    const { name, slug, offlineModeEnabled } = req.body as {
+      name?: string;
+      slug?: string;
+      offlineModeEnabled?: boolean;
+    };
     if (!name?.trim() || !slug?.trim()) {
       res.status(400).json({ error: "Nome e slug são obrigatórios" });
       return;
@@ -37,7 +41,12 @@ adminRouter.post("/stores", async (req, res) => {
       return;
     }
     const store = await prisma.store.create({
-      data: { name: name.trim(), slug: normalizedSlug },
+      data: {
+        name: name.trim(),
+        slug: normalizedSlug,
+        offlineModeEnabled:
+          typeof offlineModeEnabled === "boolean" ? offlineModeEnabled : true,
+      },
     });
     res.status(201).json(store);
   } catch (e) {
@@ -49,12 +58,19 @@ adminRouter.post("/stores", async (req, res) => {
 adminRouter.patch("/stores/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug } = req.body as { name?: string; slug?: string };
-    const data: { name?: string; slug?: string } = {};
+    const { name, slug, offlineModeEnabled } = req.body as {
+      name?: string;
+      slug?: string;
+      offlineModeEnabled?: boolean;
+    };
+    const data: { name?: string; slug?: string; offlineModeEnabled?: boolean } = {};
     if (name !== undefined) data.name = name.trim();
     if (slug !== undefined) data.slug = slug.trim().toLowerCase().replace(/\s+/g, "-");
+    if (offlineModeEnabled !== undefined) {
+      data.offlineModeEnabled = Boolean(offlineModeEnabled);
+    }
     if (Object.keys(data).length === 0) {
-      res.status(400).json({ error: "Envie name ou slug para atualizar" });
+      res.status(400).json({ error: "Envie name, slug ou offlineModeEnabled para atualizar" });
       return;
     }
     if (data.slug) {

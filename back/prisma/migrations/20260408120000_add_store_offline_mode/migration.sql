@@ -1,0 +1,2 @@
+ALTER TABLE "Store"
+ADD COLUMN "offlineModeEnabled" BOOLEAN NOT NULL DEFAULT true;

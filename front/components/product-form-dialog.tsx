@@ -22,6 +22,7 @@ import {
 import { CurrencyInput } from "@/components/currency-input"
 import { upsertProduct, getAllBarcodes } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
+import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -341,7 +342,14 @@ export function ProductFormDialog({
     }
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function runSyncAfterLocalSave() {
+    const result = await syncToServer()
+    if (!result.ok) {
+      toast.error(result.error ?? "Falha ao sincronizar com o servidor")
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (currentStep < 2) {
       goToNextStep()
@@ -354,6 +362,12 @@ export function ProductFormDialog({
     }
     if (priceCents <= 0) {
       toast.error("Preco de venda deve ser maior que zero")
+      return
+    }
+
+    const onlinePolicyCheck = await ensureOnlinePolicyAllowsWrite()
+    if (!onlinePolicyCheck.allowed) {
+      toast.error(onlinePolicyCheck.error ?? "Operacao bloqueada")
       return
     }
 
@@ -418,7 +432,7 @@ export function ProductFormDialog({
       )
       onOpenChange(false)
       onSaved()
-      syncToServer().catch(() => {})
+      void runSyncAfterLocalSave()
       return
     }
 
@@ -483,7 +497,7 @@ export function ProductFormDialog({
       )
       onOpenChange(false)
       onSaved()
-      syncToServer().catch(() => {})
+      void runSyncAfterLocalSave()
       return
     }
 
@@ -509,7 +523,7 @@ export function ProductFormDialog({
     toast.success(isEditing ? "Produto atualizado" : "Produto cadastrado")
     onOpenChange(false)
     onSaved()
-    syncToServer().catch(() => {})
+    void runSyncAfterLocalSave()
   }
 
   const showBrand = category === "roupas" || category === "tenis"

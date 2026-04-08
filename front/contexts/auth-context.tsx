@@ -17,6 +17,7 @@ import {
   type AuthUser,
 } from "@/lib/auth-api";
 import { pullFromServer } from "@/lib/sync-pull";
+import { setOfflineModeEnabledForStore } from "@/lib/offline-mode";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -42,6 +43,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!u) {
       clearStoredToken();
       setToken(null);
+      return;
+    }
+    setStoredStoreId(u.storeId);
+    if (u.storeId && typeof u.store?.offlineModeEnabled === "boolean") {
+      setOfflineModeEnabledForStore(u.storeId, u.store.offlineModeEnabled);
     }
   }, []);
 
@@ -56,6 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(async (u) => {
         setUser(u);
         if (u?.storeId) setStoredStoreId(u.storeId);
+        if (u?.storeId && typeof u.store?.offlineModeEnabled === "boolean") {
+          setOfflineModeEnabledForStore(u.storeId, u.store.offlineModeEnabled);
+        }
         if (u) {
           const result = await pullFromServer();
           setSynced(result.synced);
@@ -69,6 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { token: newToken, user: newUser } = await authLogin(email, password);
       setStoredToken(newToken);
       setStoredStoreId(newUser.storeId);
+      if (newUser.storeId && typeof newUser.store?.offlineModeEnabled === "boolean") {
+        setOfflineModeEnabledForStore(newUser.storeId, newUser.store.offlineModeEnabled);
+      }
       setToken(newToken);
       setUser(newUser);
       const result = await pullFromServer();

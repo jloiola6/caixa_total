@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { adjustStock } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
+import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import type { Product } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -61,9 +62,15 @@ export function StockAdjustDialog({
     }
   }, [open, sizeOptions])
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!product) return
+
+    const onlinePolicyCheck = await ensureOnlinePolicyAllowsWrite()
+    if (!onlinePolicyCheck.allowed) {
+      toast.error(onlinePolicyCheck.error ?? "Operacao bloqueada")
+      return
+    }
 
     const value = parseInt(delta, 10)
     if (isNaN(value) || value === 0) {
@@ -95,7 +102,10 @@ export function StockAdjustDialog({
     setReason("")
     onOpenChange(false)
     onAdjusted()
-    syncToServer().catch(() => {})
+    const syncResult = await syncToServer()
+    if (!syncResult.ok) {
+      toast.error(syncResult.error ?? "Falha ao sincronizar com o servidor")
+    }
   }
 
   function handleClose() {

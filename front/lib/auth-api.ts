@@ -34,7 +34,7 @@ export type AuthUser = {
   name: string;
   role: "SUPER_ADMIN" | "STORE_USER";
   storeId: string | null;
-  store: { id: string; name: string; slug: string } | null;
+  store: { id: string; name: string; slug: string; offlineModeEnabled?: boolean } | null;
 };
 
 async function parseJsonWithFallback(

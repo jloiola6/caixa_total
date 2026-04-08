@@ -41,6 +41,7 @@ import {
 } from "@/lib/db"
 import { formatCurrency } from "@/lib/format"
 import { syncToServer } from "@/lib/sync"
+import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import { printSaleReceipt } from "@/lib/sale-receipt"
 import type { Product, CartItem, PaymentSplit } from "@/lib/types"
 import { useAuth } from "@/contexts/auth-context"
@@ -243,12 +244,18 @@ export default function CaixaPage() {
     setCheckoutOpen(true)
   }
 
-  function confirmSale(
+  async function confirmSale(
     payments: PaymentSplit[],
     customerName: string | null,
     customerPhone: string | null,
     lineTotalOverridesCents: Record<string, number>
   ) {
+    const onlinePolicyCheck = await ensureOnlinePolicyAllowsWrite()
+    if (!onlinePolicyCheck.allowed) {
+      toast.error(onlinePolicyCheck.error ?? "Operacao bloqueada")
+      return
+    }
+
     const result = createSale({
       items: cart,
       payments,
@@ -281,7 +288,10 @@ export default function CaixaPage() {
       )
     })
 
-    syncToServer().catch(() => {})
+    const syncResult = await syncToServer()
+    if (!syncResult.ok) {
+      toast.error(syncResult.error ?? "Falha ao sincronizar com o servidor")
+    }
   }
 
   function handleClearCart() {

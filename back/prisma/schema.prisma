@@ -36,6 +36,7 @@ model Store {
   id        String   @id @default(uuid())
   name     String
   slug     String   @unique
+  offlineModeEnabled Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   users    User[]
