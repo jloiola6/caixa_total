@@ -93,6 +93,59 @@ function toPaymentMethod(s: string): PaymentMethod {
   return "dinheiro";
 }
 
+type SalePaymentInput = { saleId: string; method: string; amountCents: number };
+
+type NormalizedSalePayment = {
+  id: string;
+  saleId: string;
+  method: PaymentMethod;
+  amountCents: number;
+};
+
+function buildSalePaymentId(saleId: string, method: PaymentMethod): string {
+  return `${saleId}:${method}`;
+}
+
+function normalizeSalePayments(payments: SalePaymentInput[]): NormalizedSalePayment[] {
+  const dedupeByExactValue = new Set<string>();
+  const aggregated = new Map<string, { saleId: string; method: PaymentMethod; amountCents: number }>();
+
+  for (const payment of payments) {
+    const saleId = (payment.saleId ?? "").trim();
+    if (!saleId) continue;
+
+    const method = toPaymentMethod(payment.method ?? "");
+    const amountRaw = Number(payment.amountCents ?? 0);
+    if (!Number.isFinite(amountRaw)) continue;
+    const amountCents = Math.max(0, Math.floor(amountRaw));
+    if (amountCents <= 0) continue;
+
+    const exactValueKey = `${saleId}|${method}|${amountCents}`;
+    if (dedupeByExactValue.has(exactValueKey)) continue;
+    dedupeByExactValue.add(exactValueKey);
+
+    const key = `${saleId}|${method}`;
+    const existing = aggregated.get(key);
+    if (existing) {
+      existing.amountCents += amountCents;
+      continue;
+    }
+
+    aggregated.set(key, {
+      saleId,
+      method,
+      amountCents,
+    });
+  }
+
+  return Array.from(aggregated.values()).map((payment) => ({
+    id: buildSalePaymentId(payment.saleId, payment.method),
+    saleId: payment.saleId,
+    method: payment.method,
+    amountCents: payment.amountCents,
+  }));
+}
+
 const CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
@@ -244,12 +297,11 @@ syncRouter.post("/", async (req, res) => {
       for (const s of existingSales) existingSaleIds.add(s.id);
     }
 
-    const paymentsFromSales: { id: string; saleId: string; method: string; amountCents: number }[] = [];
+    const paymentsFromSales: SalePaymentInput[] = [];
     if (explicitSalePayments.length === 0 && sales.length > 0) {
       for (const sale of sales) {
         for (const p of sale.payments ?? []) {
           paymentsFromSales.push({
-            id: crypto.randomUUID(),
             saleId: sale.id,
             method: p.method,
             amountCents: p.amountCents,
@@ -258,9 +310,18 @@ syncRouter.post("/", async (req, res) => {
       }
     }
 
+    const paymentsToCreate = normalizeSalePayments(
+      explicitSalePayments.length > 0
+        ? explicitSalePayments.map((sp) => ({
+            saleId: sp.saleId,
+            method: sp.method,
+            amountCents: sp.amountCents,
+          }))
+        : paymentsFromSales
+    );
+
     const saleIdsWithPayments = new Set<string>();
-    for (const sp of explicitSalePayments) saleIdsWithPayments.add(sp.saleId);
-    for (const p of paymentsFromSales) saleIdsWithPayments.add(p.saleId);
+    for (const sp of paymentsToCreate) saleIdsWithPayments.add(sp.saleId);
     if (saleIdsWithPayments.size > 0) {
       await prisma.salePayment.deleteMany({
         where: { saleId: { in: [...saleIdsWithPayments] } },
@@ -464,18 +525,15 @@ syncRouter.post("/", async (req, res) => {
       });
     }
 
-    const paymentsToCreate =
-      explicitSalePayments.length > 0
-        ? explicitSalePayments
-        : paymentsFromSales;
     if (paymentsToCreate.length > 0) {
       await prisma.salePayment.createMany({
         data: paymentsToCreate.map((sp) => ({
           id: sp.id,
           saleId: sp.saleId,
-          method: toPaymentMethod(sp.method),
+          method: sp.method,
           amountCents: sp.amountCents,
         })),
+        skipDuplicates: true,
       });
     }
 

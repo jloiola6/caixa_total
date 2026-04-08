@@ -36,6 +36,28 @@ function formatCurrencyCents(cents: number): string {
   return CURRENCY_FORMATTER.format(cents / 100)
 }
 
+function normalizeSalePayments(payments: PaymentSplit[]): PaymentSplit[] {
+  const totalsByMethod = new Map<PaymentSplit["method"], number>()
+
+  for (const payment of payments) {
+    const method = payment?.method
+    if (!method) continue
+
+    const amountRaw = Number(payment?.amountCents ?? 0)
+    if (!Number.isFinite(amountRaw)) continue
+
+    const amountCents = Math.max(0, Math.floor(amountRaw))
+    if (amountCents <= 0) continue
+
+    totalsByMethod.set(method, (totalsByMethod.get(method) ?? 0) + amountCents)
+  }
+
+  return Array.from(totalsByMethod.entries()).map(([method, amountCents]) => ({
+    method,
+    amountCents,
+  }))
+}
+
 const PRODUCT_VARIANT_SEPARATOR = "::"
 
 function legacyTennisSizeId(productId: string, size: string): string {
@@ -889,7 +911,6 @@ export function createSale(
       updatedAt: now,
     }
   }
-  write(getProductsKey(), products)
 
   const saleId = randomUUID()
   const now = new Date().toISOString()
@@ -916,13 +937,18 @@ export function createSale(
 
   const totalCents = saleItems.reduce((sum, si) => sum + si.lineTotalCents, 0)
   const itemsCount = saleItems.reduce((sum, si) => sum + si.qty, 0)
+  const normalizedPayments = normalizeSalePayments(payments)
+  const totalPaidCents = normalizedPayments.reduce((sum, p) => sum + p.amountCents, 0)
+  if (normalizedPayments.length === 0 || totalPaidCents !== totalCents) return null
+
+  write(getProductsKey(), products)
 
   const sale: Sale = {
     id: saleId,
     createdAt: now,
     totalCents,
     itemsCount,
-    payments,
+    payments: normalizedPayments,
     customerName: customerName?.trim() || null,
     customerPhone: customerPhone?.trim() || null,
   }

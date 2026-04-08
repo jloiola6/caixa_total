@@ -264,7 +264,7 @@ export default function CaixaPage() {
       lineTotalOverridesCents,
     })
     if (!result) {
-      toast.error("Erro ao registrar venda. Verifique o estoque.")
+      toast.error("Erro ao registrar venda. Verifique estoque e pagamentos.")
       return
     }
     setLastSaleTotal(result.sale.totalCents)

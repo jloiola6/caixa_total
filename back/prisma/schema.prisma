@@ -156,6 +156,8 @@ model SalePayment {
   method      PaymentMethod
   amountCents Int
   sale        Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([saleId, method])
 }
 
 model StockLog {
