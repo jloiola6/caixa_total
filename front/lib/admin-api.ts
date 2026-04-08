@@ -5,6 +5,7 @@ export type Store = {
   name: string;
   slug: string;
   offlineModeEnabled: boolean;
+  onlineStoreEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -25,11 +26,15 @@ export async function getStores(): Promise<Store[]> {
   return res.json();
 }
 
-export async function createStore(name: string, slug: string): Promise<Store> {
+export async function createStore(
+  name: string,
+  slug: string,
+  options?: { offlineModeEnabled?: boolean; onlineStoreEnabled?: boolean }
+): Promise<Store> {
   const res = await fetch(getApiUrl("/admin/stores"), {
     method: "POST",
     headers: getAuthHeaders(true),
-    body: JSON.stringify({ name, slug }),
+    body: JSON.stringify({ name, slug, ...options }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Falha ao criar loja");
@@ -38,7 +43,12 @@ export async function createStore(name: string, slug: string): Promise<Store> {
 
 export async function updateStore(
   id: string,
-  data: { name?: string; slug?: string; offlineModeEnabled?: boolean }
+  data: {
+    name?: string;
+    slug?: string;
+    offlineModeEnabled?: boolean;
+    onlineStoreEnabled?: boolean;
+  }
 ): Promise<Store> {
   const res = await fetch(getApiUrl(`/admin/stores/${id}`), {
     method: "PATCH",

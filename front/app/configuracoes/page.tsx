@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2, CloudOff } from "lucide-react"
+import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2, CloudOff, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -43,6 +43,7 @@ export default function ConfiguracoesPage() {
   const [storesSaving, setStoresSaving] = useState(false)
   const [selectedStoreId, setSelectedStoreId] = useState("")
   const [storeOfflineModeEnabled, setStoreOfflineModeEnabled] = useState(true)
+  const [storeOnlineEnabled, setStoreOnlineEnabled] = useState(false)
 
   const isDesktop = typeof window !== "undefined" && Boolean(window.caixaDesktop)
   const isSuperAdmin = user?.role === "SUPER_ADMIN"
@@ -103,12 +104,15 @@ export default function ConfiguracoesPage() {
       .finally(() => setStoresLoading(false))
   }, [isSuperAdmin])
 
-  useEffect(() => {
-    if (!selectedStoreId) return
-    const currentStore = stores.find((store) => store.id === selectedStoreId)
-    if (!currentStore) return
-    setStoreOfflineModeEnabled(Boolean(currentStore.offlineModeEnabled))
+  const selectedStore = useMemo(() => {
+    return stores.find((store) => store.id === selectedStoreId) ?? null
   }, [stores, selectedStoreId])
+
+  useEffect(() => {
+    if (!selectedStore) return
+    setStoreOfflineModeEnabled(Boolean(selectedStore.offlineModeEnabled))
+    setStoreOnlineEnabled(Boolean(selectedStore.onlineStoreEnabled))
+  }, [selectedStore])
 
   const validationError = useMemo(() => {
     if (!enabled) return null
@@ -203,7 +207,7 @@ export default function ConfiguracoesPage() {
     toast.error(result.error || "Falha ao enviar teste de impressao")
   }
 
-  async function handleSaveOfflineMode() {
+  async function handleSaveStoreSettings() {
     if (!selectedStoreId) {
       toast.error("Selecione uma loja para continuar")
       return
@@ -213,14 +217,11 @@ export default function ConfiguracoesPage() {
     try {
       const updatedStore = await updateStore(selectedStoreId, {
         offlineModeEnabled: storeOfflineModeEnabled,
+        onlineStoreEnabled: storeOnlineEnabled,
       })
       setStores((prev) => prev.map((store) => (store.id === updatedStore.id ? updatedStore : store)))
       setOfflineModeEnabledForStore(updatedStore.id, updatedStore.offlineModeEnabled)
-      toast.success(
-        updatedStore.offlineModeEnabled
-          ? "Modo offline habilitado para a loja"
-          : "Modo offline desabilitado para a loja"
-      )
+      toast.success("Configuracoes da loja salvas")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao salvar configuracao")
     } finally {
@@ -244,10 +245,10 @@ export default function ConfiguracoesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CloudOff className="size-5" />
-              Modo Offline por Loja
+              Configuracoes por Loja
             </CardTitle>
             <CardDescription>
-              Quando desabilitado, esta loja passa a depender de API online para operar.
+              Ajuste politicas de operacao e habilite a loja online publica por slug.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -286,15 +287,44 @@ export default function ConfiguracoesPage() {
               />
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="online-store-enabled">Loja online publica</Label>
+                <p className="text-xs text-muted-foreground">
+                  Libera consulta publica de produtos e estoque em /loja?slug={selectedStore?.slug || "..."}.
+                </p>
+              </div>
+              <Switch
+                id="online-store-enabled"
+                checked={storeOnlineEnabled}
+                onCheckedChange={setStoreOnlineEnabled}
+                disabled={!selectedStoreId || storesLoading}
+              />
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                onClick={() => void handleSaveOfflineMode()}
+                onClick={() => void handleSaveStoreSettings()}
                 className="gap-2"
                 disabled={!selectedStoreId || storesLoading || storesSaving}
               >
                 <Save className="size-4" />
                 {storesSaving ? "Salvando..." : "Salvar configuracao"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                disabled={!selectedStore || !storeOnlineEnabled}
+                onClick={() => {
+                  if (!selectedStore) return
+                  const query = encodeURIComponent(selectedStore.slug)
+                  window.open(`/loja?slug=${query}`, "_blank", "noopener,noreferrer")
+                }}
+              >
+                <ExternalLink className="size-4" />
+                Abrir loja online
               </Button>
             </div>
           </CardContent>

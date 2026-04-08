@@ -55,6 +55,7 @@ authRouter.post("/login", async (req, res) => {
               name: user.store.name,
               slug: user.store.slug,
               offlineModeEnabled: user.store.offlineModeEnabled,
+              onlineStoreEnabled: user.store.onlineStoreEnabled,
             }
           : null,
       },
@@ -159,6 +160,7 @@ authRouter.get("/me", authMiddleware, async (req, res) => {
             name: user.store.name,
             slug: user.store.slug,
             offlineModeEnabled: user.store.offlineModeEnabled,
+            onlineStoreEnabled: user.store.onlineStoreEnabled,
           }
         : null,
     });

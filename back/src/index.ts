@@ -9,6 +9,7 @@ import { syncRouter } from "./routes/sync.js";
 import { reportRouter } from "./routes/report.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { financeRouter } from "./routes/finance.js";
+import { storefrontRouter } from "./routes/storefront.js";
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use("/sync", syncRouter);
 app.use("/report", reportRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/finance", financeRouter);
+app.use("/storefront", storefrontRouter);
 
 app.listen(config.port, "0.0.0.0", () => {
   console.log(`Backend listening on http://0.0.0.0:${config.port}`);

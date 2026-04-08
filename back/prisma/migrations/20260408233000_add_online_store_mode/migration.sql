@@ -1,0 +1,2 @@
+ALTER TABLE "Store"
+ADD COLUMN "onlineStoreEnabled" BOOLEAN NOT NULL DEFAULT false;

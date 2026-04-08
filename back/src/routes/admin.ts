@@ -25,10 +25,11 @@ adminRouter.get("/stores", async (_req, res) => {
 
 adminRouter.post("/stores", async (req, res) => {
   try {
-    const { name, slug, offlineModeEnabled } = req.body as {
+    const { name, slug, offlineModeEnabled, onlineStoreEnabled } = req.body as {
       name?: string;
       slug?: string;
       offlineModeEnabled?: boolean;
+      onlineStoreEnabled?: boolean;
     };
     if (!name?.trim() || !slug?.trim()) {
       res.status(400).json({ error: "Nome e slug são obrigatórios" });
@@ -46,6 +47,8 @@ adminRouter.post("/stores", async (req, res) => {
         slug: normalizedSlug,
         offlineModeEnabled:
           typeof offlineModeEnabled === "boolean" ? offlineModeEnabled : true,
+        onlineStoreEnabled:
+          typeof onlineStoreEnabled === "boolean" ? onlineStoreEnabled : false,
       },
     });
     res.status(201).json(store);
@@ -58,19 +61,30 @@ adminRouter.post("/stores", async (req, res) => {
 adminRouter.patch("/stores/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, offlineModeEnabled } = req.body as {
+    const { name, slug, offlineModeEnabled, onlineStoreEnabled } = req.body as {
       name?: string;
       slug?: string;
       offlineModeEnabled?: boolean;
+      onlineStoreEnabled?: boolean;
     };
-    const data: { name?: string; slug?: string; offlineModeEnabled?: boolean } = {};
+    const data: {
+      name?: string;
+      slug?: string;
+      offlineModeEnabled?: boolean;
+      onlineStoreEnabled?: boolean;
+    } = {};
     if (name !== undefined) data.name = name.trim();
     if (slug !== undefined) data.slug = slug.trim().toLowerCase().replace(/\s+/g, "-");
     if (offlineModeEnabled !== undefined) {
       data.offlineModeEnabled = Boolean(offlineModeEnabled);
     }
+    if (onlineStoreEnabled !== undefined) {
+      data.onlineStoreEnabled = Boolean(onlineStoreEnabled);
+    }
     if (Object.keys(data).length === 0) {
-      res.status(400).json({ error: "Envie name, slug ou offlineModeEnabled para atualizar" });
+      res
+        .status(400)
+        .json({ error: "Envie name, slug, offlineModeEnabled ou onlineStoreEnabled para atualizar" });
       return;
     }
     if (data.slug) {
