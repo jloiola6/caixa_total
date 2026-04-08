@@ -14,6 +14,7 @@ import {
   getOfflineModeEnabledForCurrentStore,
   OFFLINE_MODE_CHANGED_EVENT,
 } from "@/lib/offline-mode";
+import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
 
 function getInitialOnlineStatus(): boolean {
@@ -35,6 +36,7 @@ async function checkApiOnline(signal: AbortSignal): Promise<boolean> {
 }
 
 export function OfflineIndicator() {
+  const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(getInitialOnlineStatus);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [syncConflictCount, setSyncConflictCount] = useState(0);
@@ -43,12 +45,20 @@ export function OfflineIndicator() {
   );
   const wasOfflineRef = useRef(false);
   const checkingConflictsRef = useRef(false);
+  const isStoreUser = user?.role === "STORE_USER";
+  const syncFeaturesEnabled = isStoreUser && offlineModeEnabled;
+  const shouldPollApiHealth = syncFeaturesEnabled;
 
   useEffect(() => {
     let mounted = true;
     let intervalId: number | null = null;
 
     const runHealthCheck = async () => {
+      if (!shouldPollApiHealth) {
+        if (!mounted) return;
+        setApiOnline(null);
+        return;
+      }
       if (!window.navigator.onLine) {
         if (!mounted) return;
         setApiOnline(false);
@@ -78,30 +88,44 @@ export function OfflineIndicator() {
     };
 
     setIsOnline(window.navigator.onLine);
-    void runHealthCheck();
+    if (shouldPollApiHealth) {
+      void runHealthCheck();
+    } else {
+      setApiOnline(null);
+    }
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-    window.addEventListener("focus", handleFocus);
+    if (shouldPollApiHealth) {
+      window.addEventListener("focus", handleFocus);
+    }
 
-    intervalId = window.setInterval(() => {
-      setIsOnline(window.navigator.onLine);
-      void runHealthCheck();
-    }, 30000);
+    if (shouldPollApiHealth) {
+      intervalId = window.setInterval(() => {
+        setIsOnline(window.navigator.onLine);
+        void runHealthCheck();
+      }, 30000);
+    }
 
     return () => {
       mounted = false;
       if (intervalId != null) window.clearInterval(intervalId);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
-      window.removeEventListener("focus", handleFocus);
+      if (shouldPollApiHealth) {
+        window.removeEventListener("focus", handleFocus);
+      }
     };
-  }, []);
+  }, [shouldPollApiHealth]);
 
   const isOffline = !isOnline || apiOnline === false;
-  const hasPendingConflicts = syncConflictCount > 0;
+  const hasPendingConflicts = syncFeaturesEnabled && syncConflictCount > 0;
 
   useEffect(() => {
+    if (!syncFeaturesEnabled) {
+      setSyncConflictCount(0);
+      return;
+    }
     setSyncConflictCount(getStoredSyncConflictCount());
     const onSyncConflictStatus = (event: Event) => {
       const detail = (event as CustomEvent<{ count?: unknown }>).detail;
@@ -112,7 +136,7 @@ export function OfflineIndicator() {
     return () => {
       window.removeEventListener(SYNC_CONFLICT_STATUS_EVENT, onSyncConflictStatus);
     };
-  }, []);
+  }, [syncFeaturesEnabled]);
 
   useEffect(() => {
     const refreshOfflineMode = () => setOfflineModeEnabled(getOfflineModeEnabledForCurrentStore());
@@ -158,7 +182,7 @@ export function OfflineIndicator() {
       }
     };
 
-    if (!offlineModeEnabled) {
+    if (!syncFeaturesEnabled) {
       wasOfflineRef.current = isOffline;
       return () => {
         mounted = false;
@@ -173,11 +197,11 @@ export function OfflineIndicator() {
     return () => {
       mounted = false;
     };
-  }, [isOffline, offlineModeEnabled]);
+  }, [isOffline, syncFeaturesEnabled]);
 
   if (!isOffline && !hasPendingConflicts) return null;
 
-  const isConflictMode = !isOffline && hasPendingConflicts;
+  const isConflictMode = syncFeaturesEnabled && !isOffline && hasPendingConflicts;
   const isOfflineBlockedByPolicy = !offlineModeEnabled && isOffline;
   const containerClass = isConflictMode
     ? "animate-[pulse_1.6s_ease-in-out_infinite] border-y border-yellow-300/80 bg-[linear-gradient(to_bottom,oklch(0.78_0.12_92)_0%,oklch(0.88_0.1_95)_48%,var(--background)_100%)] px-4 py-2 shadow-[0_0_0_1px_rgba(253,224,71,0.25)]"

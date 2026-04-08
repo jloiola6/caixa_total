@@ -112,6 +112,11 @@ export function AppSidebar() {
   }, [user?.role])
 
   useEffect(() => {
+    if (user?.role !== "STORE_USER" || !offlineModeEnabled) {
+      setSyncConflictCount(0)
+      return
+    }
+
     const onSyncConflictStatus = (event: Event) => {
       const detail = (event as CustomEvent<{ count?: unknown }>).detail
       const count = Number(detail?.count ?? 0)
@@ -122,7 +127,7 @@ export function AppSidebar() {
     return () => {
       window.removeEventListener(SYNC_CONFLICT_STATUS_EVENT, onSyncConflictStatus)
     }
-  }, [])
+  }, [user?.role, offlineModeEnabled])
 
   function handleLogout() {
     logout()
@@ -214,7 +219,9 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarFooter>
-      <SyncModal open={syncOpen} onOpenChange={setSyncOpen} />
+      {user?.role === "STORE_USER" && offlineModeEnabled && (
+        <SyncModal open={syncOpen} onOpenChange={setSyncOpen} />
+      )}
     </Sidebar>
   )
 }
