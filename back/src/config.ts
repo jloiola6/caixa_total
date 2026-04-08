@@ -15,5 +15,8 @@ export const config = {
   frontUrl: process.env.FRONT_URL ?? "http://localhost:3000",
   resendApiKey: process.env.RESEND_API_KEY ?? "",
   resendFrom: process.env.RESEND_FROM ?? "onboarding@resend.dev",
+  webPushVapidSubject: process.env.WEB_PUSH_VAPID_SUBJECT ?? "mailto:suporte@caixatotal.app",
+  webPushVapidPublicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY ?? "",
+  webPushVapidPrivateKey: process.env.WEB_PUSH_VAPID_PRIVATE_KEY ?? "",
   isProduction: process.env.NODE_ENV === "production",
 } as const;

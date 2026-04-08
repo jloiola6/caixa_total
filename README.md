@@ -132,11 +132,15 @@ JWT_SECRET=qualquer-chave-para-dev
 FRONT_URL=http://localhost:3000
 RESEND_API_KEY=
 RESEND_FROM=onboarding@resend.dev
+WEB_PUSH_VAPID_SUBJECT=mailto:suporte@caixatotal.app
+WEB_PUSH_VAPID_PUBLIC_KEY=
+WEB_PUSH_VAPID_PRIVATE_KEY=
 SEED_SUPER_ADMIN_EMAIL=admin@example.com
 SEED_SUPER_ADMIN_PASSWORD=altere-me
 ```
 
 > `DATABASE_URL` e `JWT_SECRET` são **obrigatórias**. O backend falha ao iniciar se não estiverem definidas.
+> Para Push Web no PWA/mobile, gere as chaves VAPID **uma única vez na sua máquina** (ou Cloud Shell) com `npx web-push generate-vapid-keys`. Não é necessário gerar no GitHub Actions.
 
 ### 4. Preparar o schema e seed
 
@@ -330,7 +334,52 @@ gcloud run services update caixa-total-back \
 | `FRONT_URL` | Backend | Nao | Origens permitidas no CORS (separar por `,`). `*` libera tudo |
 | `RESEND_API_KEY` | Backend | Nao | Chave da API Resend para envio de e-mails |
 | `RESEND_FROM` | Backend | Nao | Remetente dos e-mails (padrão: `onboarding@resend.dev`) |
+| `WEB_PUSH_VAPID_SUBJECT` | Backend | Nao | Contato do emissor de push (ex.: `mailto:suporte@dominio.com`) |
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | Backend | Nao | Chave pública VAPID usada no frontend para registrar push |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | Backend | Nao | Chave privada VAPID usada no backend para enviar push |
 | `NEXT_PUBLIC_API_URL` | Frontend | Sim (build time) | URL do backend, embutida no build estático |
+
+### Habilitar Push Web (passo a passo rápido)
+
+Use este fluxo quando quiser ativar notificações push no PWA/mobile em produção.
+
+1. Gere o par de chaves VAPID localmente (uma única vez):
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+2. Copie os valores gerados (`Public Key` e `Private Key`).
+3. Atualize as variáveis no Cloud Run do backend:
+
+```bash
+gcloud run services update caixa-total-back \
+  --region us-central1 \
+  --update-env-vars "WEB_PUSH_VAPID_SUBJECT=mailto:suporte@caixatotal.app,WEB_PUSH_VAPID_PUBLIC_KEY=SUA_PUBLIC_KEY,WEB_PUSH_VAPID_PRIVATE_KEY=SUA_PRIVATE_KEY"
+```
+
+4. Valide que o backend ficou com push ativo:
+
+```bash
+curl -H "Authorization: Bearer SEU_TOKEN" \
+  "https://URL_DO_BACKEND/notifications/push/public-key"
+```
+
+Resposta esperada:
+
+```json
+{"enabled":true,"publicKey":"..."}
+```
+
+5. No app, faça login em um celular/PWA, abra `/notificacoes` e toque em **Ativar no aparelho**.
+6. Faça uma venda em outro dispositivo da mesma loja e confirme que chega notificação do sistema.
+
+Observações importantes:
+
+- Não precisa alterar workflow do GitHub Actions para isso.
+- Não gere novas chaves em todo deploy. Regerar chaves invalida assinaturas existentes e usuários terão que ativar push novamente.
+- O frontend não precisa rebuild para trocar chave VAPID, pois a chave pública é buscada da API em tempo de execução.
+- A `WEB_PUSH_VAPID_PRIVATE_KEY` é segredo sensível: nunca versionar no Git.
 
 ### Re-deploy (atualizações)
 
@@ -646,12 +695,15 @@ Os dados vêm **da API quando há conexão**; sem rede, a tela usa o que estiver
 - `GET /notifications/unread-count`
 - `PATCH /notifications/:id/read`
 - `POST /notifications/read-all`
+- `GET /notifications/push/public-key`
+- `POST /notifications/push/subscribe`
+- `POST /notifications/push/unsubscribe`
 
 ---
 
 ## Modelo de dados resumido
 
-Entidades: `Store`, `User`, `PasswordResetToken`, `Product`, `Sale`, `SaleItem`, `SalePayment`, `StockLog`, `Notification`.
+Entidades: `Store`, `User`, `PasswordResetToken`, `Product`, `Sale`, `SaleItem`, `SalePayment`, `StockLog`, `Notification`, `PushSubscription`.
 
 Enums:
 
@@ -697,6 +749,13 @@ Resposta esperada: `{"status":"ok","db":"connected"}`.
 ### Produtos ou relatórios diferentes entre computadores
 
 Confirme CORS (`FRONT_URL` no backend), `NEXT_PUBLIC_API_URL` / secret `BACKEND_URL` no build do front, e se `GET /sync` e `GET /report/*` retornam 200 com o token do usuário. Ver [docs/DEPLOY-PRODUCAO.md](docs/DEPLOY-PRODUCAO.md) (sync e contratos da API).
+
+### Push não chega no celular/PWA
+
+- Confirme `WEB_PUSH_VAPID_PUBLIC_KEY` e `WEB_PUSH_VAPID_PRIVATE_KEY` no backend.
+- Em iOS, o push web exige app instalado na tela inicial (PWA) e permissão concedida.
+- Em Android/desktop, o navegador precisa estar em HTTPS (localhost é exceção em dev).
+- Abra `/notificacoes` e use o botão "Ativar no aparelho" para registrar o dispositivo.
 
 ### Backend não inicia
 

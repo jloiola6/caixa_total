@@ -1,4 +1,5 @@
 import type { PaymentMethod, ProductCategory } from "@/lib/types"
+import { getOrCreateDeviceId } from "@/lib/device-id"
 
 const getBaseUrl = () =>
   (typeof window !== "undefined"
@@ -60,9 +61,12 @@ export async function postSync(
   storeId?: string
 ): Promise<{ ok: boolean; serverTime?: string }> {
   const body = storeId ? { ...payload, storeId } : payload;
+  const headers = getAuthHeaders(true);
+  const deviceId = getOrCreateDeviceId();
+  if (deviceId) headers["x-device-id"] = deviceId;
   const res = await fetch(getApiUrl("/sync"), {
     method: "POST",
-    headers: getAuthHeaders(true),
+    headers,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Sync failed: ${res.status}`);

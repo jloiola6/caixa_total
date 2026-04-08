@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -52,7 +54,16 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <OfflineIndicator />
         <header className="flex h-12 items-center gap-2 px-4 md:hidden">
           <SidebarTrigger />
-          <span className="text-sm font-semibold">CaixaTotal</span>
+          <Link href="/" className="inline-flex items-center">
+            <Image
+              src="/caixa-total-logo.png"
+              alt="Logo Caixa Total"
+              width={768}
+              height={512}
+              className="h-8 w-auto rounded-sm"
+              priority
+            />
+          </Link>
         </header>
         <div className="flex-1 overflow-auto">{children}</div>
       </SidebarInset>

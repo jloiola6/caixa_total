@@ -18,6 +18,7 @@ import {
 } from "@/lib/auth-api";
 import { pullFromServer } from "@/lib/sync-pull";
 import { setOfflineModeEnabledForStore } from "@/lib/offline-mode";
+import { clearLocalPushSubscription } from "@/lib/push-notifications";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -91,6 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    void clearLocalPushSubscription().catch((error) => {
+      console.error("Falha ao limpar assinatura local de push:", error);
+    });
     clearStoredToken();
     setToken(null);
     setUser(null);

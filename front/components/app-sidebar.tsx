@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ShoppingCart,
@@ -145,19 +146,19 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-            <ShoppingCart className="size-4" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-sidebar-foreground">
-              CaixaTotal
-            </span>
-            <span className="text-xs text-sidebar-foreground/60">
-              Sistema PDV
-            </span>
-          </div>
-        </Link>
+        <div className="flex flex-col gap-1">
+          <Link href="/" className="inline-flex items-center">
+            <Image
+              src="/caixa-total-logo.png"
+              alt="Logo Caixa Total"
+              width={768}
+              height={512}
+              className="h-11 w-auto rounded-md"
+              priority
+            />
+          </Link>
+          <span className="text-xs text-sidebar-foreground/60">Sistema PDV</span>
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

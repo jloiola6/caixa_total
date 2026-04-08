@@ -44,6 +44,7 @@ model Store {
   sales    Sale[]
   stockLogs StockLog[]
   notifications Notification[]
+  pushSubscriptions PushSubscription[]
 }
 
 model User {
@@ -57,6 +58,7 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   resetTokens  PasswordResetToken[]
+  pushSubscriptions PushSubscription[]
 }
 
 model PasswordResetToken {
@@ -187,4 +189,25 @@ model Notification {
   @@index([storeId, readAt])
   @@index([saleId])
   @@unique([saleId, type])
+}
+
+model PushSubscription {
+  id             String   @id @default(uuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint       String   @unique
+  p256dh         String
+  auth           String
+  expirationTime DateTime?
+  deviceId       String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastSeenAt     DateTime @default(now())
+
+  @@index([storeId, userId])
+  @@index([storeId, lastSeenAt])
+  @@index([deviceId])
 }

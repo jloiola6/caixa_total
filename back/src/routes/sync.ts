@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { NotificationType, ProductCategory, PaymentMethod } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth.js";
 import { requireStoreUserOrSuperAdmin } from "../middleware/auth.js";
+import { sendPushNotificationToStore } from "../lib/web-push.js";
 
 export const syncRouter = Router();
 syncRouter.use(authMiddleware);
@@ -154,6 +155,24 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", {
 function buildSaleNotificationMessage(totalCents: number, itemsCount: number): string {
   const itemsLabel = itemsCount === 1 ? "1 item" : `${itemsCount} itens`;
   return `${itemsLabel} · Total ${CURRENCY_FORMATTER.format(totalCents / 100)}`;
+}
+
+function resolveDeviceIdHeader(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) {
+    return resolveDeviceIdHeader(value[0]);
+  }
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized ? normalized : null;
+}
+
+function buildSaleNotificationUrl(saleId: string | null): string {
+  if (!saleId) return "/notificacoes";
+  const query = new URLSearchParams({
+    view: "report",
+    saleId,
+  });
+  return `/relatorios?${query.toString()}`;
 }
 
 function normalizeTennisSizes(
@@ -564,6 +583,45 @@ syncRouter.post("/", async (req, res) => {
         data: newSaleNotifications,
         skipDuplicates: true,
       });
+
+      const insertedNotifications = await prisma.notification.findMany({
+        where: { id: { in: newSaleNotifications.map((n) => n.id) } },
+        select: {
+          id: true,
+          title: true,
+          message: true,
+          saleId: true,
+          createdAt: true,
+        },
+      });
+
+      if (insertedNotifications.length > 0) {
+        const sourceDeviceId = resolveDeviceIdHeader(req.headers["x-device-id"]);
+
+        for (const notification of insertedNotifications) {
+          try {
+            await sendPushNotificationToStore({
+              storeId,
+              excludeDeviceId: sourceDeviceId,
+              payload: {
+                title: notification.title,
+                body: notification.message,
+                tag: notification.saleId
+                  ? `sale_created:${notification.saleId}`
+                  : `notification:${notification.id}`,
+                url: buildSaleNotificationUrl(notification.saleId),
+                data: {
+                  notificationId: notification.id,
+                  saleId: notification.saleId,
+                  createdAt: notification.createdAt.toISOString(),
+                },
+              },
+            });
+          } catch (pushError) {
+            console.error("Push dispatch error:", pushError);
+          }
+        }
+      }
     }
 
     res.status(200).json({ ok: true, serverTime: now.toISOString() });

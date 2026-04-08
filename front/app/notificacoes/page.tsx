@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Bell, Check, CheckCheck, Receipt, Search } from "lucide-react"
+import { Bell, BellOff, Check, CheckCheck, Receipt, Search, Smartphone } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,6 +14,12 @@ import {
 import { getStoredStoreId } from "@/lib/auth-api"
 import { formatDate } from "@/lib/format"
 import type { AppNotification } from "@/lib/types"
+import {
+  disablePushSubscription,
+  ensurePushSubscription,
+  getPushSetupStatus,
+  type PushSetupStatus,
+} from "@/lib/push-notifications"
 import { toast } from "sonner"
 
 function formatDateSafe(iso: string): string {
@@ -28,6 +34,8 @@ export default function NotificacoesPage() {
   const router = useRouter()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [loading, setLoading] = useState(true)
+  const [pushStatus, setPushStatus] = useState<PushSetupStatus | null>(null)
+  const [pushLoading, setPushLoading] = useState(false)
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -43,6 +51,24 @@ export default function NotificacoesPage() {
       console.error("Falha ao carregar notificacoes:", e)
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  const loadPushStatus = useCallback(async () => {
+    try {
+      const status = await getPushSetupStatus()
+      setPushStatus(status)
+    } catch (error) {
+      console.error("Falha ao verificar push:", error)
+      setPushStatus((current) =>
+        current ?? {
+          supported: false,
+          serverEnabled: false,
+          permission: "unsupported",
+          enabled: false,
+          reason: "Falha ao verificar status do push",
+        }
+      )
     }
   }, [])
 
@@ -70,10 +96,27 @@ export default function NotificacoesPage() {
     }
   }, [loadNotifications])
 
+  useEffect(() => {
+    void loadPushStatus()
+
+    const onFocus = () => void loadPushStatus()
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
+  }, [loadPushStatus])
+
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.readAt).length,
     [notifications]
   )
+
+  const pushStatusLabel = useMemo(() => {
+    if (!pushStatus) return "Verificando..."
+    if (!pushStatus.supported) return "Indisponivel"
+    if (!pushStatus.serverEnabled) return "Servidor sem push"
+    if (pushStatus.enabled) return "Ativado"
+    if (pushStatus.permission === "denied") return "Bloqueado"
+    return "Desativado"
+  }, [pushStatus])
 
   async function handleRead(id: string) {
     try {
@@ -103,6 +146,47 @@ export default function NotificacoesPage() {
       window.dispatchEvent(new Event("notifications:updated"))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao marcar notificacoes como lidas")
+    }
+  }
+
+  async function handleEnablePush() {
+    setPushLoading(true)
+    try {
+      const status = await ensurePushSubscription({ requestPermission: true })
+      setPushStatus(status)
+      if (status.enabled) {
+        toast.success("Notificacoes do aparelho ativadas com sucesso")
+        return
+      }
+
+      if (status.reason) {
+        toast.error(status.reason)
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao ativar notificacoes do aparelho"
+      )
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  async function handleDisablePush() {
+    setPushLoading(true)
+    try {
+      const status = await disablePushSubscription()
+      setPushStatus(status)
+      toast.success("Notificacoes do aparelho desativadas")
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao desativar notificacoes do aparelho"
+      )
+    } finally {
+      setPushLoading(false)
     }
   }
 
@@ -148,6 +232,55 @@ export default function NotificacoesPage() {
           </Button>
         </div>
       </div>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Smartphone className="size-4 text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">
+                Notificacoes do aparelho
+              </p>
+              <Badge variant={pushStatus?.enabled ? "default" : "secondary"}>
+                {pushStatusLabel}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Receba aviso de novas vendas mesmo com o app minimizado ou fechado.
+            </p>
+            {pushStatus?.reason && !pushStatus.enabled ? (
+              <p className="text-xs text-muted-foreground">{pushStatus.reason}</p>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant={pushStatus?.enabled ? "outline" : "default"}
+            className="gap-2"
+            onClick={pushStatus?.enabled ? handleDisablePush : handleEnablePush}
+            disabled={
+              pushLoading ||
+              !pushStatus ||
+              !pushStatus.supported ||
+              !pushStatus.serverEnabled ||
+              (!pushStatus.enabled && pushStatus.permission === "denied")
+            }
+          >
+            {pushStatus?.enabled ? (
+              <>
+                <BellOff className="size-4" />
+                Desativar no aparelho
+              </>
+            ) : (
+              <>
+                <Bell className="size-4" />
+                {pushStatus?.permission === "denied"
+                  ? "Permissao bloqueada"
+                  : "Ativar no aparelho"}
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
 
       {loading ? (
         <Card>

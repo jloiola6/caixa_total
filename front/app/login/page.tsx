@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { ShoppingCart } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,9 +37,14 @@ export default function LoginPage() {
     <Card className="w-full max-w-sm">
       <CardHeader className="space-y-1 text-center">
         <div className="flex justify-center">
-          <div className="flex size-12 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ShoppingCart className="size-6" />
-          </div>
+          <Image
+            src="/caixa-total-logo.png"
+            alt="Logo Caixa Total"
+            width={768}
+            height={512}
+            className="h-20 w-auto rounded-lg"
+            priority
+          />
         </div>
         <CardTitle className="text-2xl">CaixaTotal</CardTitle>
         <CardDescription>Entre com seu e-mail e senha</CardDescription>
