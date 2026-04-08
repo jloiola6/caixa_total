@@ -122,6 +122,37 @@ export async function getReportSales(
   return res.json();
 }
 
+export async function cancelReportSale(
+  saleId: string,
+  storeId?: string
+): Promise<{ ok: boolean; saleId: string; restoredProducts: number; restoredItems: number }> {
+  const normalizedSaleId = saleId.trim();
+  if (!normalizedSaleId) {
+    throw new Error("saleId é obrigatório");
+  }
+
+  let url = getApiUrl(`/report/sales/${encodeURIComponent(normalizedSaleId)}`);
+  if (storeId) url += `?storeId=${encodeURIComponent(storeId)}`;
+
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  if (!res.ok) {
+    let message = `Falha ao cancelar venda: ${res.status}`;
+    try {
+      const payload = (await res.json()) as { error?: string };
+      if (payload?.error) message = payload.error;
+    } catch {
+      // Ignora corpo não-JSON.
+    }
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
 export async function getReportTopProducts(
   start: string,
   end: string,

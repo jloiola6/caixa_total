@@ -27,6 +27,7 @@ import {
   Phone,
   CreditCard,
   Printer,
+  XCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -62,6 +63,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   BarChart,
   Bar,
   XAxis,
@@ -74,8 +85,9 @@ import {
   getSales,
   getSaleItems,
   getProducts,
+  cancelSaleLocally,
 } from "@/lib/db"
-import { getReportSales } from "@/lib/api"
+import { cancelReportSale, getReportSales } from "@/lib/api"
 import { formatCurrency, formatDate, formatDateLabel } from "@/lib/format"
 import { printSaleReceipt } from "@/lib/sale-receipt"
 import {
@@ -226,6 +238,8 @@ function RelatoriosContent() {
   const [offlineModeEnabled, setOfflineModeEnabled] = useState(() =>
     getOfflineModeEnabledForCurrentStore()
   )
+  const [salePendingCancel, setSalePendingCancel] = useState<ReportSale | null>(null)
+  const [cancelSaleLoading, setCancelSaleLoading] = useState(false)
 
   const monthDate = useMemo(() => parseMonthDate(selectedMonth), [selectedMonth])
   const weekOptions = useMemo(() => buildWeekOptions(monthDate), [monthDate])
@@ -712,6 +726,46 @@ function RelatoriosContent() {
     })
   }
 
+  function openCancelSaleDialog(sale: ReportSale) {
+    if (readOnly) return
+    setSalePendingCancel(sale)
+  }
+
+  async function handleConfirmCancelSale() {
+    if (!salePendingCancel) return
+
+    if (!useApi) {
+      toast.error("Cancelamento de venda exige conexao com a API.")
+      setSalePendingCancel(null)
+      return
+    }
+
+    setCancelSaleLoading(true)
+    try {
+      await cancelReportSale(salePendingCancel.id)
+
+      // Mantem a base local alinhada para evitar recriar essa venda no proximo sync.
+      cancelSaleLocally(salePendingCancel.id)
+
+      setSourceSales((current) =>
+        current.filter((sale) => sale.id !== salePendingCancel.id)
+      )
+      setExpandedSale((current) =>
+        current === salePendingCancel.id ? null : current
+      )
+      toast.success("Venda cancelada com sucesso.")
+      setSalePendingCancel(null)
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel cancelar a venda."
+      toast.error(message)
+    } finally {
+      setCancelSaleLoading(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div className="flex flex-col gap-4">
@@ -1131,16 +1185,36 @@ function RelatoriosContent() {
                                 <p className="text-xs text-muted-foreground uppercase tracking-wide">
                                   Itens da venda
                                 </p>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs"
-                                  onClick={() => handleReprintSale(sale)}
-                                >
-                                  <Printer className="mr-1 size-3" />
-                                  Reimprimir comprovante
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    onClick={() => handleReprintSale(sale)}
+                                  >
+                                    <Printer className="mr-1 size-3" />
+                                    Reimprimir comprovante
+                                  </Button>
+                                  {!readOnly && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="destructive"
+                                      className="h-7 text-xs"
+                                      onClick={() => openCancelSaleDialog(sale)}
+                                      disabled={!useApi || cancelSaleLoading}
+                                      title={
+                                        useApi
+                                          ? "Cancelar venda"
+                                          : "Cancelamento disponivel apenas com API online"
+                                      }
+                                    >
+                                      <XCircle className="mr-1 size-3" />
+                                      Cancelar venda
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                               <div className="flex flex-col gap-1">
                                 {sale.items.map((item) => (
@@ -1174,6 +1248,43 @@ function RelatoriosContent() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={Boolean(salePendingCancel)}
+        onOpenChange={(open) => {
+          if (cancelSaleLoading) return
+          if (!open) setSalePendingCancel(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar venda?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acao remove a venda, exclui os valores financeiros vinculados e devolve os itens ao estoque.
+              {salePendingCancel
+                ? ` Venda selecionada: ${formatDate(salePendingCancel.createdAt)} • ${formatCurrency(
+                    salePendingCancel.totalCents
+                  )}.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelSaleLoading}>
+              Manter venda
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleConfirmCancelSale()
+              }}
+              disabled={cancelSaleLoading}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {cancelSaleLoading ? "Cancelando..." : "Confirmar cancelamento"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
         <DialogContent className="sm:max-w-3xl">

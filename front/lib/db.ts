@@ -814,6 +814,13 @@ export interface CreateSaleInput {
   lineTotalOverridesCents?: Record<string, number>
 }
 
+export interface CancelSaleResult {
+  sale: Sale
+  saleItems: SaleItem[]
+  restoredProducts: number
+  restoredItems: number
+}
+
 export function createSale(
   input: CreateSaleInput
 ): { sale: Sale; saleItems: SaleItem[] } | null {
@@ -964,6 +971,173 @@ export function createSale(
   appendNotification(buildSaleNotification(sale))
 
   return { sale, saleItems }
+}
+
+export function cancelSaleLocally(saleId: string): CancelSaleResult | null {
+  const normalizedSaleId = saleId.trim()
+  if (!normalizedSaleId) return null
+
+  const sales = read<Sale>(getSalesKey())
+  const saleIndex = sales.findIndex((sale) => sale.id === normalizedSaleId)
+  if (saleIndex === -1) return null
+  const sale = sales[saleIndex]
+
+  const allSaleItems = read<SaleItem>(getSaleItemsKey())
+  const saleItems = allSaleItems.filter((item) => item.saleId === normalizedSaleId)
+  const products = read<Product>(getProductsKey())
+
+  const restoreByKey = new Map<
+    string,
+    { productId: string; sizeId: string | null; qty: number; productName: string }
+  >()
+
+  for (const item of saleItems) {
+    const productVariant = parseProductVariantId(item.productId)
+    const baseProductId = productVariant?.productId ?? item.productId
+    const sizeId = productVariant?.sizeId ?? null
+    const key = `${baseProductId}|${sizeId ?? ""}`
+    const safeQty = Math.max(0, item.qty)
+
+    const existing = restoreByKey.get(key)
+    if (existing) {
+      existing.qty += safeQty
+      continue
+    }
+
+    restoreByKey.set(key, {
+      productId: baseProductId,
+      sizeId,
+      qty: safeQty,
+      productName: item.productName,
+    })
+  }
+
+  const adjustments = Array.from(restoreByKey.values()).filter((item) => item.qty > 0)
+
+  for (const adjustment of adjustments) {
+    const productIndex = products.findIndex((product) => product.id === adjustment.productId)
+    if (productIndex === -1) return null
+
+    const current = products[productIndex]
+    if (!adjustment.sizeId) continue
+
+    if (current.category === "tenis" && current.tennisSizes) {
+      const sizeExists = current.tennisSizes.some((size) => size.id === adjustment.sizeId)
+      if (!sizeExists) return null
+      continue
+    }
+
+    if (current.category === "roupas" && current.clothingSizes) {
+      const sizeExists = current.clothingSizes.some((size) => size.id === adjustment.sizeId)
+      if (!sizeExists) return null
+      continue
+    }
+
+    return null
+  }
+
+  const now = new Date().toISOString()
+  const stockLogs = read<StockLog>(getStockLogsKey())
+
+  for (const adjustment of adjustments) {
+    const productIndex = products.findIndex((product) => product.id === adjustment.productId)
+    if (productIndex === -1) return null
+    const current = products[productIndex]
+
+    if (adjustment.sizeId && current.category === "tenis" && current.tennisSizes) {
+      const sizeIndex = current.tennisSizes.findIndex((size) => size.id === adjustment.sizeId)
+      if (sizeIndex === -1) return null
+      const size = current.tennisSizes[sizeIndex]
+
+      const nextSizes = current.tennisSizes.map((item, index) =>
+        index === sizeIndex
+          ? { ...item, stock: item.stock + adjustment.qty, updatedAt: now }
+          : item
+      )
+      const nextStock = nextSizes.reduce((sum, item) => sum + item.stock, 0)
+
+      products[productIndex] = {
+        ...current,
+        tennisSizes: nextSizes,
+        stock: nextStock,
+        updatedAt: now,
+      }
+
+      stockLogs.push({
+        id: randomUUID(),
+        productId: current.id,
+        productName: `${current.name} Tam ${size.number}`,
+        delta: adjustment.qty,
+        reason: `Cancelamento da venda ${normalizedSaleId}`,
+        createdAt: now,
+      })
+      continue
+    }
+
+    if (adjustment.sizeId && current.category === "roupas" && current.clothingSizes) {
+      const sizeIndex = current.clothingSizes.findIndex((size) => size.id === adjustment.sizeId)
+      if (sizeIndex === -1) return null
+      const size = current.clothingSizes[sizeIndex]
+
+      const nextSizes = current.clothingSizes.map((item, index) =>
+        index === sizeIndex
+          ? { ...item, stock: item.stock + adjustment.qty, updatedAt: now }
+          : item
+      )
+      const nextStock = nextSizes.reduce((sum, item) => sum + item.stock, 0)
+
+      products[productIndex] = {
+        ...current,
+        clothingSizes: nextSizes,
+        stock: nextStock,
+        updatedAt: now,
+      }
+
+      stockLogs.push({
+        id: randomUUID(),
+        productId: current.id,
+        productName: `${current.name} Tam ${size.number}`,
+        delta: adjustment.qty,
+        reason: `Cancelamento da venda ${normalizedSaleId}`,
+        createdAt: now,
+      })
+      continue
+    }
+
+    products[productIndex] = {
+      ...current,
+      stock: current.stock + adjustment.qty,
+      updatedAt: now,
+    }
+
+    stockLogs.push({
+      id: randomUUID(),
+      productId: current.id,
+      productName: current.name,
+      delta: adjustment.qty,
+      reason: `Cancelamento da venda ${normalizedSaleId}`,
+      createdAt: now,
+    })
+  }
+
+  const nextSales = sales.filter((item) => item.id !== normalizedSaleId)
+  const nextSaleItems = allSaleItems.filter((item) => item.saleId !== normalizedSaleId)
+  const nextNotifications = read<AppNotification>(getNotificationsKey()).filter(
+    (notification) => notification.saleId !== normalizedSaleId
+  )
+
+  write(getProductsKey(), products)
+  write(getStockLogsKey(), stockLogs)
+  write(getSalesKey(), nextSales)
+  write(getSaleItemsKey(), nextSaleItems)
+  write(getNotificationsKey(), nextNotifications)
+
+  return {
+    sale,
+    saleItems,
+    restoredProducts: adjustments.length,
+    restoredItems: adjustments.reduce((sum, item) => sum + item.qty, 0),
+  }
 }
 
 export function getSales(startDate?: string, endDate?: string): Sale[] {
