@@ -4,6 +4,7 @@ import { NotificationType, ProductCategory, PaymentMethod } from "@prisma/client
 import { authMiddleware } from "../middleware/auth.js";
 import { requireStoreUserOrSuperAdmin } from "../middleware/auth.js";
 import { sendPushNotificationToStore } from "../lib/web-push.js";
+import { upsertSaleFinancialPosting } from "../lib/finance.js";
 
 export const syncRouter = Router();
 syncRouter.use(authMiddleware);
@@ -575,6 +576,16 @@ syncRouter.post("/", async (req, res) => {
           reason: sl.reason ?? null,
           createdAt: new Date(sl.createdAt),
         },
+      });
+    }
+
+    for (const s of sales) {
+      await prisma.$transaction(async (tx) => {
+        await upsertSaleFinancialPosting(tx, {
+          saleId: s.id,
+          storeId,
+          actorUserId: req.user!.userId,
+        });
       });
     }
 

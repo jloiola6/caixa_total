@@ -14,6 +14,7 @@ import {
   Bell,
   AlertTriangle,
   Settings,
+  Landmark,
 } from "lucide-react"
 import {
   Sidebar,
@@ -43,6 +44,7 @@ import {
 const storeUserNavItems = [
   { title: "Caixa", href: "/caixa", icon: ShoppingCart },
   { title: "Produtos", href: "/produtos", icon: Package },
+  { title: "Financeiro", href: "/financeiro", icon: Landmark },
   { title: "Relatorios", href: "/relatorios", icon: BarChart3 },
   { title: "Notificacoes", href: "/notificacoes", icon: Bell },
   { title: "Configuracoes", href: "/configuracoes", icon: Settings },
@@ -50,6 +52,7 @@ const storeUserNavItems = [
 
 const superAdminNavItems = [
   { title: "Admin", href: "/admin", icon: Shield },
+  { title: "Financeiro", href: "/financeiro", icon: Landmark },
   { title: "Configuracoes", href: "/configuracoes", icon: Settings },
 ]
 

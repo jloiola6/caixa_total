@@ -32,33 +32,190 @@ enum NotificationType {
   sale_created
 }
 
+enum FinancialEntryOrigin {
+  sale
+  sale_payment
+  fiado_receivable
+  receivable_settlement
+  payable
+  payable_settlement
+  payroll
+  tax
+  adjustment
+  cash_movement
+  reconciliation
+  fiscal_import
+  recurring
+}
+
+enum FinancialBasis {
+  caixa
+  competencia
+}
+
+enum FinancialDirection {
+  entrada
+  saida
+}
+
+enum FinancialEntryStatus {
+  draft
+  approved
+  reconciled
+  canceled
+}
+
+enum FinancialCounterpartyType {
+  customer
+  supplier
+  employee
+  other
+}
+
+enum CashSessionStatus {
+  open
+  closed
+  canceled
+}
+
+enum CashMovementType {
+  opening
+  suprimento
+  sangria
+  adjustment
+  sale_collection
+  expense_payment
+  closing_difference
+}
+
+enum AccountsPayableStatus {
+  draft
+  open
+  partial
+  paid
+  canceled
+  overdue
+}
+
+enum AccountsReceivableStatus {
+  draft
+  open
+  partial
+  paid
+  canceled
+  overdue
+}
+
+enum RecurringInterval {
+  weekly
+  monthly
+  yearly
+}
+
+enum ReconciliationImportFormat {
+  csv
+  ofx
+}
+
+enum ReconciliationMatchStatus {
+  suggested
+  matched
+  ignored
+}
+
+enum FinancialAlertType {
+  payable_due
+  payable_overdue
+  receivable_overdue
+  cash_negative
+}
+
+enum FinancialAlertStatus {
+  open
+  dismissed
+  resolved
+}
+
+enum FiscalRuleType {
+  imposto
+  taxa
+}
+
+enum PayrollEventType {
+  provento
+  desconto
+  encargo
+  beneficio
+}
+
+enum FiscalDocumentDirection {
+  entrada
+  saida
+}
+
 model Store {
-  id        String   @id @default(uuid())
-  name     String
-  slug     String   @unique
-  offlineModeEnabled Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users    User[]
-  products Product[]
-  sales    Sale[]
-  stockLogs StockLog[]
-  notifications Notification[]
-  pushSubscriptions PushSubscription[]
+  id                          String                       @id @default(uuid())
+  name                        String
+  slug                        String                       @unique
+  offlineModeEnabled          Boolean                      @default(true)
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  users                       User[]
+  products                    Product[]
+  sales                       Sale[]
+  stockLogs                   StockLog[]
+  notifications               Notification[]
+  pushSubscriptions           PushSubscription[]
+  costCenters                 CostCenter[]
+  operationalProcesses        OperationalProcess[]
+  financialAccounts           FinancialAccount[]
+  financialEntries            FinancialEntry[]
+  financialCustomers          FinancialCustomer[]
+  financialSuppliers          FinancialSupplier[]
+  financialEmployees          FinancialEmployee[]
+  payables                    AccountsPayable[]
+  receivables                 AccountsReceivable[]
+  recurringTemplates          RecurringTemplate[]
+  cashSessions                CashSession[]
+  cashMovements               CashMovement[]
+  payrollImports              PayrollImport[]
+  payrollEvents               PayrollEvent[]
+  fiscalDocuments             FiscalDocument[]
+  fiscalTaxRules              FiscalTaxRule[]
+  reconciliationImports       ReconciliationImport[]
+  reconciliationRows          ReconciliationRow[]
+  financialAlerts             FinancialAlert[]
+  inventoryValuationSnapshots InventoryValuationSnapshot[]
 }
 
 model User {
-  id           String    @id @default(uuid())
-  email        String    @unique
-  passwordHash String
-  name         String
-  role         UserRole
-  storeId      String?
-  store        Store?    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  resetTokens  PasswordResetToken[]
-  pushSubscriptions PushSubscription[]
+  id                           String                         @id @default(uuid())
+  email                        String                         @unique
+  passwordHash                 String
+  name                         String
+  role                         UserRole
+  storeId                      String?
+  store                        Store?                         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdAt                    DateTime                       @default(now())
+  updatedAt                    DateTime                       @updatedAt
+  resetTokens                  PasswordResetToken[]
+  pushSubscriptions            PushSubscription[]
+  payrollImports               PayrollImport[]                @relation("PayrollImports")
+  financialEntriesCreated      FinancialEntry[]               @relation("FinancialEntriesCreated")
+  financialEntriesApproved     FinancialEntry[]               @relation("FinancialEntriesApproved")
+  financialEntryAudits         FinancialEntryAudit[]          @relation("FinancialEntryAudits")
+  payablesCreated              AccountsPayable[]              @relation("PayablesCreated")
+  payablesApproved             AccountsPayable[]              @relation("PayablesApproved")
+  receivablesCreated           AccountsReceivable[]           @relation("ReceivablesCreated")
+  receivablesApproved          AccountsReceivable[]           @relation("ReceivablesApproved")
+  recurringTemplatesCreated    RecurringTemplate[]            @relation("RecurringTemplatesCreated")
+  cashSessionsOpened           CashSession[]                  @relation("CashSessionsOpened")
+  cashSessionsClosed           CashSession[]                  @relation("CashSessionsClosed")
+  cashMovementsCreated         CashMovement[]                 @relation("CashMovementsCreated")
+  fiscalDocumentsImported      FiscalDocument[]               @relation("FiscalDocumentsImported")
+  reconciliationImportsCreated ReconciliationImport[]         @relation("ReconciliationImportsCreated")
+  payableSettlementsCreated    AccountsPayableSettlement[]    @relation("PayableSettlementsCreated")
+  receivableSettlementsCreated AccountsReceivableSettlement[] @relation("ReceivableSettlementsCreated")
 }
 
 model PasswordResetToken {
@@ -71,13 +228,13 @@ model PasswordResetToken {
 }
 
 model Product {
-  id            String         @id
+  id            String          @id
   storeId       String
-  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store         Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
   name          String
   sku           String?
   barcode       String?
-  stock         Int            @default(0)
+  stock         Int             @default(0)
   priceCents    Int
   costCents     Int?
   category      ProductCategory
@@ -91,8 +248,8 @@ model Product {
   controlNumber String?
   tennisSizes   TennisSize[]
   clothingSizes ClothingSize[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 }
 
 model TennisSize {
@@ -126,18 +283,21 @@ model ClothingSize {
 }
 
 model Sale {
-  id            String         @id
-  storeId       String
-  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  createdAt     DateTime
-  totalCents    Int
-  itemsCount    Int
-  customerName  String?
-  customerPhone String?
-  updatedAt     DateTime       @default(now())
-  items        SaleItem[]
-  payments      SalePayment[]
-  notifications Notification[]
+  id                String         @id
+  storeId           String
+  store             Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdAt         DateTime
+  totalCents        Int
+  itemsCount        Int
+  customerName      String?
+  customerPhone     String?
+  updatedAt         DateTime       @default(now())
+  financialPostedAt DateTime?
+  items             SaleItem[]
+  payments          SalePayment[]
+  notifications     Notification[]
+
+  @@index([storeId, createdAt])
 }
 
 model SaleItem {
@@ -185,29 +345,547 @@ model Notification {
   createdAt DateTime         @default(now())
   readAt    DateTime?
 
+  @@unique([saleId, type])
   @@index([storeId, createdAt])
   @@index([storeId, readAt])
   @@index([saleId])
-  @@unique([saleId, type])
 }
 
 model PushSubscription {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   storeId        String
-  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store          Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint       String   @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint       String    @unique
   p256dh         String
   auth           String
   expirationTime DateTime?
   deviceId       String?
   userAgent      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastSeenAt     DateTime  @default(now())
 
   @@index([storeId, userId])
   @@index([storeId, lastSeenAt])
   @@index([deviceId])
+}
+
+model CostCenter {
+  id                 String               @id @default(uuid())
+  storeId            String
+  store              Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  code               String
+  name               String
+  active             Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  entries            FinancialEntry[]
+  payables           AccountsPayable[]
+  receivables        AccountsReceivable[]
+  recurringTemplates RecurringTemplate[]
+
+  @@unique([storeId, code])
+  @@index([storeId, active])
+}
+
+model OperationalProcess {
+  id                 String               @id @default(uuid())
+  storeId            String
+  store              Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  code               String
+  name               String
+  active             Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  entries            FinancialEntry[]
+  payables           AccountsPayable[]
+  receivables        AccountsReceivable[]
+  recurringTemplates RecurringTemplate[]
+
+  @@unique([storeId, code])
+  @@index([storeId, active])
+}
+
+model FinancialAccount {
+  id                    String                         @id @default(uuid())
+  storeId               String
+  store                 Store                          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name                  String
+  type                  String
+  currency              String                         @default("BRL")
+  openingBalanceCents   Int                            @default(0)
+  currentBalanceCents   Int                            @default(0)
+  active                Boolean                        @default(true)
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
+  entries               FinancialEntry[]
+  cashSessions          CashSession[]
+  payableSettlements    AccountsPayableSettlement[]
+  receivableSettlements AccountsReceivableSettlement[]
+  reconciliationRows    ReconciliationRow[]
+  reconciliationImports ReconciliationImport[]
+
+  @@unique([storeId, name])
+  @@index([storeId, active])
+}
+
+model FinancialCustomer {
+  id                String               @id @default(uuid())
+  storeId           String
+  store             Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name              String
+  phone             String?
+  document          String?
+  notes             String?
+  fiadoBalanceCents Int                  @default(0)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  receivables       AccountsReceivable[]
+  entries           FinancialEntry[]     @relation("CustomerFinancialEntries")
+
+  @@index([storeId, fiadoBalanceCents])
+  @@index([storeId, name])
+}
+
+model FinancialSupplier {
+  id        String            @id @default(uuid())
+  storeId   String
+  store     Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name      String
+  document  String?
+  notes     String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  payables  AccountsPayable[]
+  entries   FinancialEntry[]  @relation("SupplierFinancialEntries")
+
+  @@index([storeId, name])
+}
+
+model FinancialEmployee {
+  id              String           @id @default(uuid())
+  storeId         String
+  store           Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name            String
+  document        String?
+  baseSalaryCents Int              @default(0)
+  active          Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  payrollEvents   PayrollEvent[]
+  entries         FinancialEntry[] @relation("EmployeeFinancialEntries")
+
+  @@index([storeId, active])
+  @@index([storeId, name])
+}
+
+model PayrollImport {
+  id               String         @id @default(uuid())
+  storeId          String
+  store            Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  period           String
+  sourceName       String?
+  importedByUserId String
+  importedByUser   User           @relation("PayrollImports", fields: [importedByUserId], references: [id], onDelete: Restrict)
+  rawPayload       String?
+  createdAt        DateTime       @default(now())
+  events           PayrollEvent[]
+
+  @@unique([storeId, period, sourceName])
+  @@index([storeId, period])
+}
+
+model PayrollEvent {
+  id               String            @id @default(uuid())
+  storeId          String
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  payrollImportId  String?
+  payrollImport    PayrollImport?    @relation(fields: [payrollImportId], references: [id], onDelete: SetNull)
+  employeeId       String
+  employee         FinancialEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  period           String
+  type             PayrollEventType
+  description      String
+  amountCents      Int
+  competenceDate   DateTime
+  settlementDate   DateTime?
+  financialEntryId String?
+  financialEntry   FinancialEntry?   @relation(fields: [financialEntryId], references: [id], onDelete: SetNull)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([storeId, period])
+  @@index([employeeId, period])
+}
+
+model AccountsPayable {
+  id                  String                      @id @default(uuid())
+  storeId             String
+  store               Store                       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  supplierId          String?
+  supplier            FinancialSupplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  description         String
+  amountCents         Int
+  outstandingCents    Int
+  dueDate             DateTime
+  competenceDate      DateTime
+  status              AccountsPayableStatus       @default(open)
+  notes               String?
+  costCenterId        String
+  costCenter          CostCenter                  @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  processId           String
+  process             OperationalProcess          @relation(fields: [processId], references: [id], onDelete: Restrict)
+  createdByUserId     String
+  createdBy           User                        @relation("PayablesCreated", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedByUserId    String?
+  approvedBy          User?                       @relation("PayablesApproved", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedAt          DateTime?
+  recurringTemplateId String?
+  recurringTemplate   RecurringTemplate?          @relation(fields: [recurringTemplateId], references: [id], onDelete: SetNull)
+  settlements         AccountsPayableSettlement[]
+  entries             FinancialEntry[]            @relation("PayableFinancialEntries")
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+
+  @@index([storeId, status, dueDate])
+  @@index([storeId, competenceDate])
+}
+
+model AccountsPayableSettlement {
+  id               String           @id @default(uuid())
+  payableId        String
+  payable          AccountsPayable  @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  accountId        String
+  account          FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  amountCents      Int
+  settledAt        DateTime
+  createdByUserId  String
+  createdBy        User             @relation("PayableSettlementsCreated", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  financialEntryId String?
+  financialEntry   FinancialEntry?  @relation(fields: [financialEntryId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+
+  @@index([payableId, settledAt])
+}
+
+model AccountsReceivable {
+  id                  String                         @id @default(uuid())
+  storeId             String
+  store               Store                          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customerId          String?
+  customer            FinancialCustomer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  description         String
+  amountCents         Int
+  outstandingCents    Int
+  dueDate             DateTime?
+  competenceDate      DateTime
+  status              AccountsReceivableStatus       @default(open)
+  notes               String?
+  costCenterId        String
+  costCenter          CostCenter                     @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  processId           String
+  process             OperationalProcess             @relation(fields: [processId], references: [id], onDelete: Restrict)
+  createdByUserId     String
+  createdBy           User                           @relation("ReceivablesCreated", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedByUserId    String?
+  approvedBy          User?                          @relation("ReceivablesApproved", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedAt          DateTime?
+  recurringTemplateId String?
+  recurringTemplate   RecurringTemplate?             @relation(fields: [recurringTemplateId], references: [id], onDelete: SetNull)
+  settlements         AccountsReceivableSettlement[]
+  entries             FinancialEntry[]               @relation("ReceivableFinancialEntries")
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  @@index([storeId, status, dueDate])
+  @@index([storeId, competenceDate])
+}
+
+model AccountsReceivableSettlement {
+  id               String             @id @default(uuid())
+  receivableId     String
+  receivable       AccountsReceivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  accountId        String
+  account          FinancialAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  amountCents      Int
+  settledAt        DateTime
+  createdByUserId  String
+  createdBy        User               @relation("ReceivableSettlementsCreated", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  financialEntryId String?
+  financialEntry   FinancialEntry?    @relation(fields: [financialEntryId], references: [id], onDelete: SetNull)
+  createdAt        DateTime           @default(now())
+
+  @@index([receivableId, settledAt])
+}
+
+model RecurringTemplate {
+  id                String                     @id @default(uuid())
+  storeId           String
+  store             Store                      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name              String
+  direction         FinancialDirection
+  amountCents       Int
+  startDate         DateTime
+  endDate           DateTime?
+  interval          RecurringInterval
+  nextRunDate       DateTime
+  lastRunDate       DateTime?
+  active            Boolean                    @default(true)
+  costCenterId      String
+  costCenter        CostCenter                 @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  processId         String
+  process           OperationalProcess         @relation(fields: [processId], references: [id], onDelete: Restrict)
+  counterpartyType  FinancialCounterpartyType?
+  counterpartyLabel String?
+  createdByUserId   String
+  createdBy         User                       @relation("RecurringTemplatesCreated", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  payables          AccountsPayable[]
+  receivables       AccountsReceivable[]
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@index([storeId, active, nextRunDate])
+}
+
+model CashSession {
+  id                         String            @id @default(uuid())
+  storeId                    String
+  store                      Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  accountId                  String
+  account                    FinancialAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  openedByUserId             String
+  openedBy                   User              @relation("CashSessionsOpened", fields: [openedByUserId], references: [id], onDelete: Restrict)
+  closedByUserId             String?
+  closedBy                   User?             @relation("CashSessionsClosed", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  status                     CashSessionStatus @default(open)
+  openedAt                   DateTime          @default(now())
+  closedAt                   DateTime?
+  openingAmountCents         Int
+  closingAmountExpectedCents Int?
+  closingAmountCountedCents  Int?
+  differenceCents            Int?
+  notes                      String?
+  movements                  CashMovement[]
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+
+  @@index([storeId, status, openedAt])
+}
+
+model CashMovement {
+  id               String           @id @default(uuid())
+  storeId          String
+  store            Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  cashSessionId    String
+  cashSession      CashSession      @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  type             CashMovementType
+  amountCents      Int
+  description      String?
+  createdByUserId  String
+  createdBy        User             @relation("CashMovementsCreated", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  financialEntryId String?
+  financialEntry   FinancialEntry?  @relation(fields: [financialEntryId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+
+  @@index([storeId, cashSessionId, createdAt])
+}
+
+model FiscalTaxRule {
+  id              String           @id @default(uuid())
+  storeId         String
+  store           Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name            String
+  type            FiscalRuleType
+  appliesTo       String
+  productCategory ProductCategory?
+  paymentMethod   PaymentMethod?
+  rateBps         Int
+  active          Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([storeId, active])
+}
+
+model FiscalDocument {
+  id               String                  @id @default(uuid())
+  storeId          String
+  store            Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  key              String
+  number           String?
+  series           String?
+  issuerDocument   String?
+  issuerName       String?
+  direction        FiscalDocumentDirection
+  issueDate        DateTime
+  totalCents       Int
+  xmlContent       String
+  importedByUserId String
+  importedByUser   User                    @relation("FiscalDocumentsImported", fields: [importedByUserId], references: [id], onDelete: Restrict)
+  taxes            FiscalDocumentTax[]
+  entries          FinancialEntry[]        @relation("FiscalDocumentEntries")
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@unique([storeId, key])
+  @@index([storeId, issueDate])
+}
+
+model FiscalDocumentTax {
+  id               String         @id @default(uuid())
+  fiscalDocumentId String
+  fiscalDocument   FiscalDocument @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+  name             String
+  amountCents      Int
+  rateBps          Int?
+  createdAt        DateTime       @default(now())
+
+  @@index([fiscalDocumentId])
+}
+
+model ReconciliationImport {
+  id               String                     @id @default(uuid())
+  storeId          String
+  store            Store                      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  accountId        String
+  account          FinancialAccount           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  format           ReconciliationImportFormat
+  fileName         String?
+  importedByUserId String
+  importedByUser   User                       @relation("ReconciliationImportsCreated", fields: [importedByUserId], references: [id], onDelete: Restrict)
+  importedAt       DateTime                   @default(now())
+  rows             ReconciliationRow[]
+
+  @@index([storeId, importedAt])
+}
+
+model ReconciliationRow {
+  id                     String                    @id @default(uuid())
+  reconciliationImportId String
+  reconciliationImport   ReconciliationImport      @relation(fields: [reconciliationImportId], references: [id], onDelete: Cascade)
+  storeId                String
+  store                  Store                     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  accountId              String
+  account                FinancialAccount          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  externalId             String?
+  occurredAt             DateTime
+  description            String
+  amountCents            Int
+  direction              FinancialDirection
+  matchedEntryId         String?
+  matchedEntry           FinancialEntry?           @relation(fields: [matchedEntryId], references: [id], onDelete: SetNull)
+  matchStatus            ReconciliationMatchStatus @default(suggested)
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+
+  @@index([storeId, accountId, occurredAt])
+  @@index([matchedEntryId])
+}
+
+model FinancialEntry {
+  id                    String                         @id @default(uuid())
+  storeId               String
+  store                 Store                          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  origin                FinancialEntryOrigin
+  basis                 FinancialBasis
+  direction             FinancialDirection
+  amountCents           Int
+  competenceDate        DateTime
+  settlementDate        DateTime?
+  status                FinancialEntryStatus           @default(draft)
+  description           String?
+  costCenterId          String
+  costCenter            CostCenter                     @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  processId             String
+  process               OperationalProcess             @relation(fields: [processId], references: [id], onDelete: Restrict)
+  accountId             String?
+  account               FinancialAccount?              @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  counterpartyType      FinancialCounterpartyType?
+  counterpartyLabel     String?
+  customerId            String?
+  customer              FinancialCustomer?             @relation("CustomerFinancialEntries", fields: [customerId], references: [id], onDelete: SetNull)
+  supplierId            String?
+  supplier              FinancialSupplier?             @relation("SupplierFinancialEntries", fields: [supplierId], references: [id], onDelete: SetNull)
+  employeeId            String?
+  employee              FinancialEmployee?             @relation("EmployeeFinancialEntries", fields: [employeeId], references: [id], onDelete: SetNull)
+  sourceRef             String
+  sourceRefHash         String?
+  createdByUserId       String
+  createdBy             User                           @relation("FinancialEntriesCreated", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedByUserId      String?
+  approvedBy            User?                          @relation("FinancialEntriesApproved", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedAt            DateTime?
+  reconciledAt          DateTime?
+  canceledAt            DateTime?
+  payableId             String?
+  payable               AccountsPayable?               @relation("PayableFinancialEntries", fields: [payableId], references: [id], onDelete: SetNull)
+  receivableId          String?
+  receivable            AccountsReceivable?            @relation("ReceivableFinancialEntries", fields: [receivableId], references: [id], onDelete: SetNull)
+  fiscalDocumentId      String?
+  fiscalDocument        FiscalDocument?                @relation("FiscalDocumentEntries", fields: [fiscalDocumentId], references: [id], onDelete: SetNull)
+  payrollEvents         PayrollEvent[]
+  cashMovements         CashMovement[]
+  payableSettlements    AccountsPayableSettlement[]
+  receivableSettlements AccountsReceivableSettlement[]
+  reconciliationRows    ReconciliationRow[]
+  audits                FinancialEntryAudit[]
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
+
+  @@unique([storeId, sourceRef])
+  @@index([storeId, competenceDate])
+  @@index([storeId, settlementDate])
+  @@index([storeId, status])
+  @@index([storeId, origin])
+}
+
+model FinancialEntryAudit {
+  id                String                @id @default(uuid())
+  financialEntryId  String
+  financialEntry    FinancialEntry        @relation(fields: [financialEntryId], references: [id], onDelete: Cascade)
+  action            String
+  notes             String?
+  previousStatus    FinancialEntryStatus?
+  nextStatus        FinancialEntryStatus?
+  performedByUserId String
+  performedBy       User                  @relation("FinancialEntryAudits", fields: [performedByUserId], references: [id], onDelete: Restrict)
+  createdAt         DateTime              @default(now())
+
+  @@index([financialEntryId, createdAt])
+}
+
+model FinancialAlert {
+  id                String               @id @default(uuid())
+  storeId           String
+  store             Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  type              FinancialAlertType
+  status            FinancialAlertStatus @default(open)
+  title             String
+  message           String
+  dueDate           DateTime?
+  relatedEntityType String?
+  relatedEntityId   String?
+  dismissedAt       DateTime?
+  resolvedAt        DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([storeId, status, type])
+  @@index([storeId, dueDate])
+}
+
+model InventoryValuationSnapshot {
+  id               String   @id @default(uuid())
+  storeId          String
+  store            Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  capturedAt       DateTime @default(now())
+  totalCostCents   Int
+  totalRetailCents Int
+  totalMarginCents Int
+  itemsCount       Int
+  metaJson         String?
+
+  @@index([storeId, capturedAt])
 }
