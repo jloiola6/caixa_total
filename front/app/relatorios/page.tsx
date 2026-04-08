@@ -26,6 +26,7 @@ import {
   User,
   Phone,
   CreditCard,
+  Printer,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -76,17 +77,20 @@ import {
 } from "@/lib/db"
 import { getReportSales } from "@/lib/api"
 import { formatCurrency, formatDate, formatDateLabel } from "@/lib/format"
+import { printSaleReceipt } from "@/lib/sale-receipt"
 import {
   PAYMENT_METHOD_LABELS,
   PRODUCT_CATEGORY_LABELS,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/auth-context"
 import type {
   ProductCategory,
   Sale,
   SaleItem,
   PaymentMethod,
 } from "@/lib/types"
+import { toast } from "sonner"
 
 const READ_ONLY_VIEW = "report"
 const TENNIS_VARIANT_SEPARATOR = "::"
@@ -177,6 +181,7 @@ export default function RelatoriosPage() {
 }
 
 function RelatoriosContent() {
+  const { user } = useAuth()
   const searchParams = useSearchParams()
   const focusedSaleId = searchParams.get("saleId")
   const focusedSaleDate = searchParams.get("saleDate")
@@ -670,6 +675,18 @@ function RelatoriosContent() {
     setFiltersOpen(false)
   }
 
+  function handleReprintSale(sale: ReportSale) {
+    void printSaleReceipt({
+      sale,
+      saleItems: sale.items,
+      operatorName: user?.name ?? null,
+      storeName: user?.store?.name ?? null,
+    }).then((result) => {
+      if (result.ok) return
+      toast.error(result.error || "Nao foi possivel reimprimir o comprovante")
+    })
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div className="flex flex-col gap-4">
@@ -1085,9 +1102,21 @@ function RelatoriosContent() {
                         <TableRow key={`${sale.id}-detail`}>
                           <TableCell colSpan={6} className="bg-muted/30 p-0">
                             <div className="px-8 py-3">
-                              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
-                                Itens da venda
-                              </p>
+                              <div className="mb-2 flex items-center justify-between gap-2">
+                                <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                                  Itens da venda
+                                </p>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => handleReprintSale(sale)}
+                                >
+                                  <Printer className="mr-1 size-3" />
+                                  Reimprimir comprovante
+                                </Button>
+                              </div>
                               <div className="flex flex-col gap-1">
                                 {sale.items.map((item) => (
                                   <div

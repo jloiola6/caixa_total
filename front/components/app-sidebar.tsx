@@ -3,7 +3,17 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ShoppingCart, Package, BarChart3, RefreshCw, Shield, LogOut, Bell, AlertTriangle } from "lucide-react"
+import {
+  ShoppingCart,
+  Package,
+  BarChart3,
+  RefreshCw,
+  Shield,
+  LogOut,
+  Bell,
+  AlertTriangle,
+  Settings,
+} from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -30,6 +40,7 @@ const navItems = [
   { title: "Produtos", href: "/produtos", icon: Package },
   { title: "Relatorios", href: "/relatorios", icon: BarChart3 },
   { title: "Notificacoes", href: "/notificacoes", icon: Bell },
+  { title: "Configuracoes", href: "/configuracoes", icon: Settings },
 ]
 
 export function AppSidebar() {

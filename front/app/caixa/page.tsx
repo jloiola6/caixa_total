@@ -273,9 +273,13 @@ export default function CaixaPage() {
       operatorName: user?.name ?? null,
       storeName: user?.store?.name ?? null,
     })
-    if (!printed) {
-      toast.error("Venda registrada, mas nao foi possivel abrir impressao do comprovante")
-    }
+    void printed.then((printResult) => {
+      if (printResult.ok) return
+      toast.error(
+        printResult.error ||
+          "Venda registrada, mas nao foi possivel imprimir o comprovante"
+      )
+    })
 
     syncToServer().catch(() => {})
   }

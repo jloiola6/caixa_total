@@ -1,6 +1,9 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
+const { execFile } = require("child_process");
 const fs = require("fs");
 const http = require("http");
+const net = require("net");
+const os = require("os");
 const path = require("path");
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -14,7 +17,7 @@ const normalizeDesktopApiBaseUrl = (url) =>
     .replace(/\/api$/i, "");
 const desktopApiUrlRaw =
   process.env.DESKTOP_API_URL ||
-  "https://caixa-total-back-3941173426.us-central1.run.app";
+  "http://localhost:4000";
 const desktopApiBaseUrl = normalizeDesktopApiBaseUrl(
   desktopApiUrlRaw,
 );
@@ -22,6 +25,7 @@ const apiPrefix = "/api";
 const debugRoute = "/__desktop_debug";
 const isDesktopDebug = process.env.DESKTOP_DEBUG === "1";
 const desktopServerPort = Number(process.env.DESKTOP_SERVER_PORT ?? 0);
+const preferredPrinterName = (process.env.DESKTOP_PRINTER_NAME || "").trim();
 
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("no-sandbox");
@@ -65,6 +69,151 @@ function contentTypeFor(filePath) {
 function debugLog(message) {
   if (!isDesktopDebug) return;
   console.log(`[desktop-debug] ${message}`);
+}
+
+function errorMessage(error, fallback) {
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+function runExecFile(command, args) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, (error, stdout, stderr) => {
+      if (error) {
+        const details = [stderr, stdout].filter(Boolean).join(" ").trim();
+        reject(
+          new Error(details || error.message || `Falha ao executar comando: ${command}`),
+        );
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+function htmlToPlainText(html) {
+  if (typeof html !== "string") return "";
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "\n")
+    .replace(/<script[\s\S]*?<\/script>/gi, "\n")
+    .replace(/<\/(p|div|h1|h2|h3|h4|h5|h6|li|tr|section|article|header|footer)>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trimEnd())
+    .filter((line, index, arr) => {
+      if (line.trim() !== "") return true;
+      const prev = arr[index - 1];
+      return prev && prev.trim() !== "";
+    })
+    .join("\n")
+    .trim();
+}
+
+function parsePrinterNamesFromLpstat(output) {
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("printer "))
+    .map((line) => line.split(/\s+/)[1])
+    .filter(Boolean);
+}
+
+function parseDefaultPrinterFromLpstat(output) {
+  const match = output.match(/destination:\s*([^\s]+)/i);
+  return match ? match[1] : "";
+}
+
+function normalizePrintOptions(rawOptions) {
+  if (!rawOptions || typeof rawOptions !== "object") {
+    return {
+      connectionType: "local",
+      localPrinterName: "",
+      wifiHost: "",
+      wifiPort: 9100,
+    };
+  }
+
+  const options = rawOptions;
+  const connectionType = options.connectionType === "wifi" ? "wifi" : "local";
+  const localPrinterName =
+    typeof options.localPrinterName === "string" ? options.localPrinterName.trim() : "";
+  const wifiHost = typeof options.wifiHost === "string" ? options.wifiHost.trim() : "";
+  const wifiPort =
+    typeof options.wifiPort === "number" && Number.isFinite(options.wifiPort)
+      ? Math.max(1, Math.floor(options.wifiPort))
+      : 9100;
+
+  return { connectionType, localPrinterName, wifiHost, wifiPort };
+}
+
+async function listLocalPrinters() {
+  try {
+    const printersOut = await runExecFile("lpstat", ["-p"]);
+    let defaultName = "";
+    try {
+      const defaultOut = await runExecFile("lpstat", ["-d"]);
+      defaultName = parseDefaultPrinterFromLpstat(defaultOut.stdout || "");
+    } catch {
+      defaultName = "";
+    }
+
+    const names = parsePrinterNamesFromLpstat(printersOut.stdout || "");
+    return {
+      ok: true,
+      printers: names.map((name) => ({ name, isDefault: name === defaultName })),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      printers: [],
+      error: errorMessage(error, "Falha ao listar impressoras locais"),
+    };
+  }
+}
+
+async function printTextOverWifi(text, host, port) {
+  return new Promise((resolve, reject) => {
+    const socket = new net.Socket();
+    let settled = false;
+
+    const finishOk = () => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve({ ok: true });
+    };
+
+    const finishError = (error) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+
+    socket.setTimeout(8000);
+    socket.once("timeout", () => finishError(new Error("Timeout na impressora Wi-Fi")));
+    socket.once("error", (error) => finishError(error));
+    socket.connect(port, host, () => {
+      const payload = Buffer.from(text.replace(/\r?\n/g, "\r\n"), "utf8");
+      socket.write(payload, (writeError) => {
+        if (writeError) {
+          finishError(writeError);
+          return;
+        }
+        socket.end();
+      });
+    });
+    socket.once("close", () => finishOk());
+  });
 }
 
 function tryParseJson(text) {
@@ -259,13 +408,96 @@ async function proxyApiRequest(req, res, requestUrl) {
   }
 }
 
+async function printTextSilently(text, rawOptions) {
+  if (typeof text !== "string" || text.trim() === "") {
+    return { ok: false, error: "Texto de comprovante invalido" };
+  }
+
+  const options = normalizePrintOptions(rawOptions);
+
+  if (options.connectionType === "wifi") {
+    if (!options.wifiHost) {
+      return { ok: false, error: "Informe o IP/host da impressora Wi-Fi" };
+    }
+    try {
+      await printTextOverWifi(text, options.wifiHost, options.wifiPort);
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        error: errorMessage(error, "Falha ao imprimir na impressora Wi-Fi"),
+      };
+    }
+  }
+
+  let tempDir = "";
+  try {
+    tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), "caixatotal-print-"));
+    const filePath = path.join(tempDir, "comprovante.txt");
+    const normalizedText = text.replace(/\r?\n/g, "\r\n");
+    await fsPromises.writeFile(filePath, normalizedText, { encoding: "utf8" });
+
+    let printerName = options.localPrinterName || preferredPrinterName;
+    if (!printerName) {
+      try {
+        const defaultOut = await runExecFile("lpstat", ["-d"]);
+        printerName = parseDefaultPrinterFromLpstat(defaultOut.stdout || "");
+      } catch {
+        printerName = "";
+      }
+    }
+    if (!printerName) {
+      return {
+        ok: false,
+        error: "Nenhuma impressora local selecionada. Configure em Configuracoes > Impressora.",
+      };
+    }
+
+    const args = [];
+    args.push("-d", printerName);
+    args.push("-o", "raw", filePath);
+
+    await runExecFile("lp", args);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: errorMessage(error, "Falha ao imprimir comprovante em texto"),
+    };
+  } finally {
+    if (tempDir) {
+      await fsPromises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
+ipcMain.handle("desktop:print-text-silent", async (_event, text, options) => {
+  return printTextSilently(text, options);
+});
+
+// Compatibilidade com chamadas antigas: converte HTML para texto e imprime em raw text.
+ipcMain.handle("desktop:print-html-silent", async (_event, html, options) => {
+  if (typeof html !== "string" || html.trim() === "") {
+    return { ok: false, error: "Conteudo de impressao invalido" };
+  }
+  const plainText = htmlToPlainText(html);
+  return printTextSilently(plainText, options);
+});
+
+ipcMain.handle("desktop:list-printers", async () => {
+  return listLocalPrinters();
+});
+
 async function createWindow() {
+  const preloadPath = path.join(__dirname, "preload.js");
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: preloadPath,
+      sandbox: false,
     },
   });
 
