@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Download,
   Filter,
   Grid3X3,
@@ -49,6 +51,11 @@ import {
 } from "@/components/product-filters-dialog"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { ProductFormDialog } from "@/components/product-form-dialog"
 import { StockAdjustDialog } from "@/components/stock-adjust-dialog"
 import { StockHistoryDialog } from "@/components/stock-history-dialog"
@@ -95,6 +102,14 @@ function createEmptyProductFilters(): ProductFilters {
 
 function normalizeFilterValue(value: string | null | undefined): string {
   return value?.trim() ?? ""
+}
+
+function formatPercent(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value)
 }
 
 function uniqueFilterValues(values: Array<string | null | undefined>): string[] {
@@ -261,6 +276,7 @@ export default function ProdutosPage() {
   const [tablePage, setTablePage] = useState(1)
   const [tableItemsPerPage, setTableItemsPerPage] = useState(ITEMS_PER_PAGE_OPTIONS[0])
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
+  const [advancedReportOpen, setAdvancedReportOpen] = useState(false)
 
   const selectedProducts = useMemo(() => {
     return Array.from(selectedIds)
@@ -271,6 +287,71 @@ export default function ProdutosPage() {
   const activeFiltersCount = useMemo(() => {
     return countActiveProductFilters(productFilters)
   }, [productFilters])
+  const reportIsFiltered = query.trim().length > 0 || activeFiltersCount > 0
+
+  const inventoryReport = useMemo(() => {
+    const categoryTotals = new Map<
+      ProductCategory,
+      { products: number; units: number; costCents: number; priceCents: number }
+    >()
+    let totalUnits = 0
+    let totalCostCents = 0
+    let totalPriceCents = 0
+    let outOfStockProducts = 0
+    let lowStockProducts = 0
+    let productsWithoutCost = 0
+
+    for (const product of products) {
+      const quantity = Math.max(0, Number(product.stock) || 0)
+      const unitPriceCents = Math.max(0, Number(product.priceCents) || 0)
+      const unitCostCents =
+        product.costCents == null ? 0 : Math.max(0, Number(product.costCents) || 0)
+
+      totalUnits += quantity
+      totalPriceCents += quantity * unitPriceCents
+      totalCostCents += quantity * unitCostCents
+
+      if (product.costCents == null) productsWithoutCost += 1
+      if (quantity === 0) outOfStockProducts += 1
+      else if (quantity <= 5) lowStockProducts += 1
+
+      const currentCategory = categoryTotals.get(product.category) ?? {
+        products: 0,
+        units: 0,
+        costCents: 0,
+        priceCents: 0,
+      }
+      currentCategory.products += 1
+      currentCategory.units += quantity
+      currentCategory.costCents += quantity * unitCostCents
+      currentCategory.priceCents += quantity * unitPriceCents
+      categoryTotals.set(product.category, currentCategory)
+    }
+
+    const marginCents = totalPriceCents - totalCostCents
+    const marginPercent = totalPriceCents > 0 ? marginCents / totalPriceCents : 0
+    const averagePricePerUnitCents = totalUnits > 0 ? Math.round(totalPriceCents / totalUnits) : 0
+    const categoryBreakdown = Array.from(categoryTotals.entries())
+      .map(([category, values]) => ({
+        category,
+        ...values,
+        marginCents: values.priceCents - values.costCents,
+      }))
+      .sort((a, b) => b.priceCents - a.priceCents)
+
+    return {
+      totalUnits,
+      totalCostCents,
+      totalPriceCents,
+      marginCents,
+      marginPercent,
+      averagePricePerUnitCents,
+      outOfStockProducts,
+      lowStockProducts,
+      productsWithoutCost,
+      categoryBreakdown,
+    }
+  }, [products])
 
   const totalTablePages = useMemo(() => {
     return Math.max(1, Math.ceil(products.length / tableItemsPerPage))
@@ -489,6 +570,173 @@ export default function ProdutosPage() {
               Limpar filtros
             </Button>
           )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border/70 bg-gradient-to-br from-muted/50 via-background to-background p-4 md:p-5">
+        <div className="flex flex-col gap-4">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-foreground">
+              Resumo financeiro do estoque
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {reportIsFiltered
+                ? "Valores calculados com base nos filtros e busca atuais."
+                : "Valores calculados com todo o estoque cadastrado."}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-sky-200/80 bg-sky-50/70 p-3 dark:border-sky-900/40 dark:bg-sky-900/20">
+              <p className="text-xs font-medium text-sky-700 dark:text-sky-300">
+                Valor de custo
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {formatCurrency(inventoryReport.totalCostCents)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {inventoryReport.totalUnits} unidade(s)
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-indigo-200/80 bg-indigo-50/70 p-3 dark:border-indigo-900/40 dark:bg-indigo-900/20">
+              <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                Valor de venda
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {formatCurrency(inventoryReport.totalPriceCents)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Media por unidade: {formatCurrency(inventoryReport.averagePricePerUnitCents)}
+              </p>
+            </div>
+
+            <div
+              className={`rounded-lg border p-3 ${
+                inventoryReport.marginCents >= 0
+                  ? "border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-900/40 dark:bg-emerald-900/20"
+                  : "border-red-200/80 bg-red-50/70 dark:border-red-900/40 dark:bg-red-900/20"
+              }`}
+            >
+              <p
+                className={`text-xs font-medium ${
+                  inventoryReport.marginCents >= 0
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : "text-red-700 dark:text-red-300"
+                }`}
+              >
+                Diferenca estimada
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {formatCurrency(inventoryReport.marginCents)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Margem: {formatPercent(inventoryReport.marginPercent)}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-amber-200/80 bg-amber-50/70 p-3 dark:border-amber-900/40 dark:bg-amber-900/20">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                Alertas de estoque
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {inventoryReport.lowStockProducts + inventoryReport.outOfStockProducts}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {inventoryReport.lowStockProducts} baixo | {inventoryReport.outOfStockProducts} sem estoque
+              </p>
+            </div>
+          </div>
+
+          <Collapsible open={advancedReportOpen} onOpenChange={setAdvancedReportOpen}>
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-fit gap-2"
+                size="sm"
+              >
+                Relatorio avancado
+                {advancedReportOpen ? (
+                  <ChevronUp className="size-4" />
+                ) : (
+                  <ChevronDown className="size-4" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <div className="space-y-3 rounded-lg border border-border/70 bg-background/80 p-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="rounded-md bg-muted/60 p-2">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Produtos monitorados
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{products.length}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/60 p-2">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Sem custo cadastrado
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">
+                      {inventoryReport.productsWithoutCost}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-muted/60 p-2">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Produtos com estoque OK
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">
+                      {Math.max(
+                        0,
+                        products.length -
+                          inventoryReport.lowStockProducts -
+                          inventoryReport.outOfStockProducts
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {inventoryReport.categoryBreakdown.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Detalhamento por categoria
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      {inventoryReport.categoryBreakdown.map((categorySummary) => (
+                        <div
+                          key={categorySummary.category}
+                          className="rounded-md border border-border/60 bg-muted/30 p-3"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-foreground">
+                              {PRODUCT_CATEGORY_LABELS[categorySummary.category]}
+                            </p>
+                            <Badge variant="secondary">
+                              {categorySummary.units} un.
+                            </Badge>
+                          </div>
+                          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                            <p>Produtos: {categorySummary.products}</p>
+                            <p>Custo: {formatCurrency(categorySummary.costCents)}</p>
+                            <p>Venda: {formatCurrency(categorySummary.priceCents)}</p>
+                            <p
+                              className={
+                                categorySummary.marginCents >= 0
+                                  ? "text-emerald-700 dark:text-emerald-300"
+                                  : "text-red-700 dark:text-red-300"
+                              }
+                            >
+                              Dif: {formatCurrency(categorySummary.marginCents)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       </div>
 
