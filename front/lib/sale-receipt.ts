@@ -1,6 +1,6 @@
 import type { Sale, SaleItem } from "@/lib/types"
 import { PAYMENT_METHOD_LABELS } from "@/lib/types"
-import { getPrinterSettings } from "@/lib/printer-settings"
+import { getPrinterSettings, type PrinterSettings } from "@/lib/printer-settings"
 
 type PrintSaleReceiptInput = {
   sale: Sale
@@ -17,6 +17,11 @@ type PrintSaleReceiptResult = {
 
 type BuildReceiptHtmlOptions = {
   includePrintScript: boolean
+}
+
+type ReceiptCustomContent = {
+  headerLines: string[]
+  footerLines: string[]
 }
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", {
@@ -123,15 +128,88 @@ function wrapText(valueRaw: string, width: number): string[] {
   return lines
 }
 
+function normalizeCustomTextLines(value: string | null | undefined): string[] {
+  if (!value) return []
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+function buildReceiptCustomContent(
+  settings: Pick<PrinterSettings, "headerText" | "footerText">
+): ReceiptCustomContent {
+  return {
+    headerLines: normalizeCustomTextLines(settings.headerText),
+    footerLines: normalizeCustomTextLines(settings.footerText),
+  }
+}
+
+function normalizeBonusQty(item: SaleItem): number {
+  const explicitRaw = Number(item.bonusQty ?? 0)
+  if (Number.isFinite(explicitRaw) && explicitRaw > 0) {
+    return Math.min(item.qty, Math.max(0, Math.floor(explicitRaw)))
+  }
+
+  const unitPriceCents = Math.max(0, Math.floor(item.unitPriceCents))
+  const qty = Math.max(0, Math.floor(item.qty))
+  const lineTotalCents = Math.max(0, Math.floor(item.lineTotalCents))
+  const fullLineCents = unitPriceCents * qty
+  const reductionCents = fullLineCents - lineTotalCents
+
+  if (unitPriceCents <= 0 || reductionCents <= 0) return 0
+  if (reductionCents % unitPriceCents !== 0) return 0
+
+  const inferredQty = reductionCents / unitPriceCents
+  if (!Number.isInteger(inferredQty) || inferredQty <= 0) return 0
+  return Math.min(qty, inferredQty)
+}
+
+function normalizeDiscountCents(sale: Sale, saleItems: SaleItem[]): number {
+  const raw = Number(sale.discountCents ?? 0)
+  if (Number.isFinite(raw) && raw > 0) return Math.max(0, Math.floor(raw))
+
+  const itemsTotalCents = saleItems.reduce(
+    (sum, item) => sum + Math.max(0, Math.floor(item.lineTotalCents)),
+    0
+  )
+  return Math.max(0, itemsTotalCents - Math.max(0, Math.floor(sale.totalCents)))
+}
+
+function getBonusSummary(saleItems: SaleItem[]): {
+  bonusItemsCount: number
+  bonusItemsValueCents: number
+} {
+  return saleItems.reduce(
+    (acc, item) => {
+      const bonusQty = normalizeBonusQty(item)
+      if (bonusQty <= 0) return acc
+      acc.bonusItemsCount += bonusQty
+      acc.bonusItemsValueCents += item.unitPriceCents * bonusQty
+      return acc
+    },
+    { bonusItemsCount: 0, bonusItemsValueCents: 0 }
+  )
+}
+
 function buildItemRows(saleItems: SaleItem[]): string {
   return saleItems
     .map((item) => {
       const name = escapeHtml(item.productName)
       const sku = item.sku ? `<div class="meta">SKU: ${escapeHtml(item.sku)}</div>` : ""
+      const bonusQty = normalizeBonusQty(item)
+      const bonusMeta =
+        bonusQty > 0
+          ? `<div class="meta">BONUS: ${bonusQty} un. (-${formatCurrency(
+              item.unitPriceCents * bonusQty
+            )})</div>`
+          : ""
       return `
         <div class="row">
           <div class="line1">${item.qty}x ${name}</div>
           ${sku}
+          ${bonusMeta}
           <div class="line2">
             <span>${formatCurrency(item.unitPriceCents)} un.</span>
             <strong>${formatCurrency(item.lineTotalCents)}</strong>
@@ -157,14 +235,30 @@ function buildPaymentRows(sale: Sale): string {
 
 function buildReceiptHtml(
   input: PrintSaleReceiptInput,
-  options: BuildReceiptHtmlOptions
+  options: BuildReceiptHtmlOptions,
+  customContent: ReceiptCustomContent
 ): string {
   const { sale, saleItems, operatorName, storeName } = input
   const title = storeName?.trim() || "CaixaTotal"
   const customerName = sale.customerName?.trim() || "-"
   const customerPhone = sale.customerPhone?.trim() || "-"
   const operator = operatorName?.trim() || "-"
+  const discountCents = normalizeDiscountCents(sale, saleItems)
+  const subtotalCents = sale.totalCents + discountCents
+  const { bonusItemsCount, bonusItemsValueCents } = getBonusSummary(saleItems)
   const safeTitle = escapeHtml(title)
+  const headerBlock =
+    customContent.headerLines.length > 0
+      ? `<div class="center small custom-text">${customContent.headerLines
+          .map((line) => `<div>${escapeHtml(line)}</div>`)
+          .join("")}</div>`
+      : ""
+  const footerBlock =
+    customContent.footerLines.length > 0
+      ? `<div class="center small custom-text">${customContent.footerLines
+          .map((line) => `<div>${escapeHtml(line)}</div>`)
+          .join("")}</div>`
+      : ""
   const printScript = options.includePrintScript
     ? `
         <script>
@@ -219,6 +313,7 @@ function buildReceiptHtml(
             font-weight: 700;
           }
           .small { font-size: 11px; }
+          .custom-text { margin-top: 6px; }
         </style>
       </head>
       <body>
@@ -226,6 +321,7 @@ function buildReceiptHtml(
           <div class="title">${safeTitle}</div>
           <div>COMPROVANTE DE VENDA</div>
         </div>
+        ${headerBlock}
 
         <div class="divider"></div>
 
@@ -247,6 +343,28 @@ function buildReceiptHtml(
 
         <div class="divider"></div>
 
+        ${
+          bonusItemsCount > 0
+            ? `<div class="line2 small"><span>Bonus concedido (${bonusItemsCount} un.)</span><span>-${formatCurrency(
+                bonusItemsValueCents
+              )}</span></div>`
+            : ""
+        }
+        ${
+          discountCents > 0
+            ? `<div class="line2 small"><span>Subtotal</span><span>${formatCurrency(
+                subtotalCents
+              )}</span></div>`
+            : ""
+        }
+        ${
+          discountCents > 0
+            ? `<div class="line2 small"><span>Desconto no total</span><span>-${formatCurrency(
+                discountCents
+              )}</span></div>`
+            : ""
+        }
+
         <div class="line2 totals">
           <span>Total</span>
           <span>${formatCurrency(sale.totalCents)}</span>
@@ -258,6 +376,7 @@ function buildReceiptHtml(
 
         <div class="divider"></div>
 
+        ${footerBlock}
         <div class="center small">Obrigado pela preferencia!</div>
 
         ${printScript}
@@ -266,7 +385,7 @@ function buildReceiptHtml(
   `
 }
 
-function buildReceiptText(input: PrintSaleReceiptInput): string {
+function buildReceiptText(input: PrintSaleReceiptInput, customContent: ReceiptCustomContent): string {
   const { sale, saleItems, operatorName, storeName } = input
   const title = sanitizeText(storeName?.trim() || "CaixaTotal")
   const customerName = sanitizeText(sale.customerName?.trim() || "-")
@@ -274,11 +393,19 @@ function buildReceiptText(input: PrintSaleReceiptInput): string {
   const operator = sanitizeText(operatorName?.trim() || "-")
   const dateTime = sanitizeText(formatDateTime(sale.createdAt))
   const saleId = sanitizeText(sale.id)
+  const discountCents = normalizeDiscountCents(sale, saleItems)
+  const subtotalCents = sale.totalCents + discountCents
+  const { bonusItemsCount, bonusItemsValueCents } = getBonusSummary(saleItems)
   const divider = "-".repeat(RECEIPT_WIDTH)
 
   const lines: string[] = []
   lines.push(centerText(title, RECEIPT_WIDTH))
   lines.push(centerText("COMPROVANTE DE VENDA", RECEIPT_WIDTH))
+  for (const headerLine of customContent.headerLines) {
+    for (const wrapped of wrapText(headerLine, RECEIPT_WIDTH)) {
+      lines.push(centerText(wrapped, RECEIPT_WIDTH))
+    }
+  }
   lines.push(divider)
   lines.push(`Data/Hora: ${dateTime}`)
   lines.push(`Venda: ${saleId}`)
@@ -295,6 +422,12 @@ function buildReceiptText(input: PrintSaleReceiptInput): string {
     }
     if (item.sku) {
       lines.push(`SKU: ${sanitizeText(item.sku)}`)
+    }
+    const bonusQty = normalizeBonusQty(item)
+    if (bonusQty > 0) {
+      lines.push(
+        `BONUS: ${bonusQty} un. (-${formatCurrency(item.unitPriceCents * bonusQty)})`
+      )
     }
     lines.push(
       buildPairLine(
@@ -317,9 +450,29 @@ function buildReceiptText(input: PrintSaleReceiptInput): string {
     )
   }
   lines.push(divider)
+  if (bonusItemsCount > 0) {
+    lines.push(
+      buildPairLine(
+        `BONUS (${bonusItemsCount} un.)`,
+        `-${formatCurrency(bonusItemsValueCents)}`,
+        RECEIPT_WIDTH
+      )
+    )
+  }
+  if (discountCents > 0) {
+    lines.push(buildPairLine("SUBTOTAL", formatCurrency(subtotalCents), RECEIPT_WIDTH))
+    lines.push(
+      buildPairLine("DESC. TOTAL", `-${formatCurrency(discountCents)}`, RECEIPT_WIDTH)
+    )
+  }
   lines.push(buildPairLine("TOTAL", formatCurrency(sale.totalCents), RECEIPT_WIDTH))
   lines.push(buildPairLine("QTD. ITENS", String(sale.itemsCount), RECEIPT_WIDTH))
   lines.push(divider)
+  for (const footerLine of customContent.footerLines) {
+    for (const wrapped of wrapText(footerLine, RECEIPT_WIDTH)) {
+      lines.push(centerText(wrapped, RECEIPT_WIDTH))
+    }
+  }
   lines.push(centerText("Obrigado pela preferencia!", RECEIPT_WIDTH))
   lines.push("")
   lines.push("")
@@ -328,11 +481,13 @@ function buildReceiptText(input: PrintSaleReceiptInput): string {
   return lines.join("\n")
 }
 
-async function tryDesktopTextSilentPrint(text: string): Promise<PrintSaleReceiptResult | null> {
+async function tryDesktopTextSilentPrint(
+  text: string,
+  printerSettings: PrinterSettings
+): Promise<PrintSaleReceiptResult | null> {
   if (typeof window === "undefined") return null
   if (!window.caixaDesktop?.printTextSilently) return null
 
-  const printerSettings = getPrinterSettings()
   const printOptions = printerSettings.enabled
     ? {
         connectionType: printerSettings.connectionType,
@@ -388,9 +543,11 @@ function isLikelyElectronRuntime(): boolean {
 export async function printSaleReceipt(
   input: PrintSaleReceiptInput
 ): Promise<PrintSaleReceiptResult> {
-  const desktopText = buildReceiptText(input)
-  const browserHtml = buildReceiptHtml(input, { includePrintScript: true })
-  const desktopResult = await tryDesktopTextSilentPrint(desktopText)
+  const printerSettings = getPrinterSettings()
+  const customContent = buildReceiptCustomContent(printerSettings)
+  const desktopText = buildReceiptText(input, customContent)
+  const browserHtml = buildReceiptHtml(input, { includePrintScript: true }, customContent)
+  const desktopResult = await tryDesktopTextSilentPrint(desktopText, printerSettings)
   if (desktopResult) return desktopResult
   if (isLikelyElectronRuntime()) {
     return {

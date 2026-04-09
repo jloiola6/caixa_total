@@ -97,6 +97,7 @@ export async function getReportSales(
     createdAt: string;
     totalCents: number;
     itemsCount: number;
+    discountCents: number;
     customerName: string | null;
     customerPhone: string | null;
     payments: { method: PaymentMethod; amountCents: number }[];
@@ -109,6 +110,7 @@ export async function getReportSales(
       qty: number;
       unitPriceCents: number;
       lineTotalCents: number;
+      bonusQty: number;
       productCategory: ProductCategory | null;
     }[];
   }[]

@@ -43,7 +43,9 @@ interface CheckoutDialogProps {
     payments: PaymentSplit[],
     customerName: string | null,
     customerPhone: string | null,
-    lineTotalOverridesCents: Record<string, number>
+    lineTotalOverridesCents: Record<string, number>,
+    orderDiscountCents: number,
+    bonusQtyByProductId: Record<string, number>
   ) => void
 }
 
@@ -58,12 +60,16 @@ export function CheckoutDialog({
     { method: "dinheiro", amountCents: 0 },
   ])
   const [lineTotalsByProductId, setLineTotalsByProductId] = useState<Record<string, number>>({})
+  const [bonusQtyByProductId, setBonusQtyByProductId] = useState<Record<string, number>>({})
+  const [orderDiscountCents, setOrderDiscountCents] = useState(0)
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
 
   useEffect(() => {
     if (!open) {
       setLineTotalsByProductId({})
+      setBonusQtyByProductId({})
+      setOrderDiscountCents(0)
       return
     }
     setLineTotalsByProductId(
@@ -71,21 +77,66 @@ export function CheckoutDialog({
         cart.map((item) => [item.product.id, item.product.priceCents * item.qty])
       )
     )
+    setBonusQtyByProductId({})
+    setOrderDiscountCents(0)
   }, [cart, open])
 
-  const effectiveCartTotal = useMemo(
+  const lineSummaries = useMemo(
     () =>
-      cart.reduce((sum, item) => {
-        const fallback = item.product.priceCents * item.qty
+      cart.map((item) => {
+        const defaultLineTotal = item.product.priceCents * item.qty
+        const bonusQtyRaw = bonusQtyByProductId[item.product.id]
+        const bonusQty = Number.isFinite(bonusQtyRaw)
+          ? Math.min(item.qty, Math.max(0, Math.floor(Number(bonusQtyRaw))))
+          : 0
         const maybeAdjusted = lineTotalsByProductId[item.product.id]
-        const lineTotal =
+        const manualAdjustedLineTotalCents =
           typeof maybeAdjusted === "number" && Number.isFinite(maybeAdjusted)
             ? Math.max(0, Math.floor(maybeAdjusted))
-            : fallback
-        return sum + lineTotal
-      }, 0),
-    [cart, lineTotalsByProductId]
+            : defaultLineTotal
+        const adjustedLineTotalCents =
+          bonusQty > 0 ? defaultLineTotal : manualAdjustedLineTotalCents
+        const bonusValueCents = item.product.priceCents * bonusQty
+        const lineTotalCents = Math.max(0, adjustedLineTotalCents - bonusValueCents)
+
+        return {
+          productId: item.product.id,
+          defaultLineTotal,
+          adjustedLineTotalCents,
+          bonusQty,
+          bonusValueCents,
+          lineTotalCents,
+        }
+      }),
+    [cart, lineTotalsByProductId, bonusQtyByProductId]
   )
+
+  const subtotalAfterBonusCents = useMemo(
+    () => lineSummaries.reduce((sum, item) => sum + item.lineTotalCents, 0),
+    [lineSummaries]
+  )
+
+  const bonusItemsCount = useMemo(
+    () => lineSummaries.reduce((sum, item) => sum + item.bonusQty, 0),
+    [lineSummaries]
+  )
+
+  const bonusItemsValueCents = useMemo(
+    () => lineSummaries.reduce((sum, item) => sum + item.bonusValueCents, 0),
+    [lineSummaries]
+  )
+
+  const adjustedSubtotalBeforeBonusCents = useMemo(
+    () => lineSummaries.reduce((sum, item) => sum + item.adjustedLineTotalCents, 0),
+    [lineSummaries]
+  )
+
+  const normalizedOrderDiscountCents = useMemo(
+    () => Math.min(subtotalAfterBonusCents, Math.max(0, Math.floor(orderDiscountCents))),
+    [subtotalAfterBonusCents, orderDiscountCents]
+  )
+
+  const effectiveCartTotal = subtotalAfterBonusCents - normalizedOrderDiscountCents
 
   const totalAssigned = useMemo(
     () => payments.reduce((sum, p) => sum + p.amountCents, 0),
@@ -99,6 +150,18 @@ export function CheckoutDialog({
       ...prev,
       [productId]: Math.max(0, Math.floor(amountCents)),
     }))
+  }
+
+  function updateBonusQty(productId: string, qty: number, maxQty: number) {
+    const normalized = Math.min(maxQty, Math.max(0, Math.floor(qty)))
+    setBonusQtyByProductId((prev) => {
+      if (normalized <= 0) {
+        const next = { ...prev }
+        delete next[productId]
+        return next
+      }
+      return { ...prev, [productId]: normalized }
+    })
   }
 
   function addPayment() {
@@ -139,6 +202,8 @@ export function CheckoutDialog({
   function handleConfirm() {
     const validPayments = payments.filter((p) => p.amountCents > 0)
     const lineTotalOverridesCents = cart.reduce<Record<string, number>>((acc, item) => {
+      const bonusQty = bonusQtyByProductId[item.product.id] ?? 0
+      if (bonusQty > 0) return acc
       const defaultLineTotal = item.product.priceCents * item.qty
       const adjusted = lineTotalsByProductId[item.product.id]
       if (
@@ -150,15 +215,26 @@ export function CheckoutDialog({
       }
       return acc
     }, {})
+    const normalizedBonusQtyByProductId = cart.reduce<Record<string, number>>((acc, item) => {
+      const raw = bonusQtyByProductId[item.product.id]
+      if (!Number.isFinite(raw)) return acc
+      const normalized = Math.min(item.qty, Math.max(0, Math.floor(Number(raw))))
+      if (normalized > 0) acc[item.product.id] = normalized
+      return acc
+    }, {})
     onConfirm(
       validPayments,
       customerName.trim() || null,
       customerPhone.trim() || null,
-      lineTotalOverridesCents
+      lineTotalOverridesCents,
+      normalizedOrderDiscountCents,
+      normalizedBonusQtyByProductId
     )
     // Reset state
     setPayments([{ method: "dinheiro", amountCents: 0 }])
     setLineTotalsByProductId({})
+    setBonusQtyByProductId({})
+    setOrderDiscountCents(0)
     setCustomerName("")
     setCustomerPhone("")
   }
@@ -167,15 +243,22 @@ export function CheckoutDialog({
     if (!open) {
       setPayments([{ method: "dinheiro", amountCents: 0 }])
       setLineTotalsByProductId({})
+      setBonusQtyByProductId({})
+      setOrderDiscountCents(0)
       setCustomerName("")
       setCustomerPhone("")
     }
     onOpenChange(open)
   }
 
+  useEffect(() => {
+    if (orderDiscountCents <= subtotalAfterBonusCents) return
+    setOrderDiscountCents(subtotalAfterBonusCents)
+  }, [orderDiscountCents, subtotalAfterBonusCents])
+
   const cartItemsCount = cart.reduce((sum, item) => sum + item.qty, 0)
   const canConfirm = totalAssigned === effectiveCartTotal && effectiveCartTotal > 0
-  const adjustmentCents = effectiveCartTotal - cartTotal
+  const adjustmentCents = adjustedSubtotalBeforeBonusCents - cartTotal
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -210,7 +293,44 @@ export function CheckoutDialog({
                   }
                   onChange={(v) => updateLineTotal(item.product.id, v)}
                   className="h-8"
+                  disabled={(bonusQtyByProductId[item.product.id] ?? 0) > 0}
                 />
+                <div className="mt-1 flex items-center justify-end gap-1">
+                  <span className="text-[10px] text-muted-foreground">Bonus</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-6"
+                    onClick={() =>
+                      updateBonusQty(
+                        item.product.id,
+                        (bonusQtyByProductId[item.product.id] ?? 0) - 1,
+                        item.qty
+                      )
+                    }
+                  >
+                    <span className="text-xs font-semibold">-</span>
+                  </Button>
+                  <span className="w-5 text-center text-xs font-medium text-foreground">
+                    {bonusQtyByProductId[item.product.id] ?? 0}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-6"
+                    onClick={() =>
+                      updateBonusQty(
+                        item.product.id,
+                        (bonusQtyByProductId[item.product.id] ?? 0) + 1,
+                        item.qty
+                      )
+                    }
+                  >
+                    <span className="text-xs font-semibold">+</span>
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
@@ -223,6 +343,39 @@ export function CheckoutDialog({
               </span>
             </div>
           )}
+          {bonusItemsValueCents > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Bonus em itens ({bonusItemsCount} un.)
+              </span>
+              <span className="font-medium text-foreground">
+                -{formatCurrency(bonusItemsValueCents)}
+              </span>
+            </div>
+          )}
+          {normalizedOrderDiscountCents > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Desconto no total</span>
+              <span className="font-medium text-foreground">
+                -{formatCurrency(normalizedOrderDiscountCents)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+            Desconto na compra total
+          </Label>
+          <CurrencyInput
+            value={orderDiscountCents}
+            onChange={(value) => setOrderDiscountCents(value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Este desconto e aplicado no total final, sem vincular a produto especifico.
+          </p>
         </div>
 
         <Separator />

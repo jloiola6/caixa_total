@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2, CloudOff, ExternalLink } from "lucide-react"
+import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2, CloudOff, ExternalLink, Store } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -15,11 +16,18 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
-import { getStores, updateStore, type Store } from "@/lib/admin-api"
+import { getStores, updateStore, type Store as AdminStore } from "@/lib/admin-api"
+import { updateMyStoreSettings } from "@/lib/auth-api"
 import type { Sale, SaleItem } from "@/lib/types"
 import { getDefaultPrinterSettings, getPrinterSettings, savePrinterSettings } from "@/lib/printer-settings"
 import { printSaleReceipt } from "@/lib/sale-receipt"
 import { setOfflineModeEnabledForStore } from "@/lib/offline-mode"
+import {
+  DEFAULT_STOCK_ALERT_COLORS,
+  DEFAULT_STOCK_ALERT_THRESHOLDS,
+  normalizeHexColor,
+  resolveStockAlertThresholds,
+} from "@/lib/store-settings"
 import { toast } from "sonner"
 
 type InstalledPrinter = {
@@ -27,23 +35,49 @@ type InstalledPrinter = {
   isDefault: boolean
 }
 
+function parseThresholdInput(value: string): number | null {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  const normalized = Math.floor(numeric)
+  if (normalized < 0) return null
+  if (normalized > 1000000) return null
+  return normalized
+}
+
 export default function ConfiguracoesPage() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
 
   const [enabled, setEnabled] = useState(false)
   const [connectionType, setConnectionType] = useState<"local" | "wifi">("local")
   const [localPrinterName, setLocalPrinterName] = useState("")
   const [wifiHost, setWifiHost] = useState("")
   const [wifiPort, setWifiPort] = useState("9100")
+  const [headerText, setHeaderText] = useState("")
+  const [footerText, setFooterText] = useState("")
 
   const [loadingPrinters, setLoadingPrinters] = useState(false)
   const [installedPrinters, setInstalledPrinters] = useState<InstalledPrinter[]>([])
-  const [stores, setStores] = useState<Store[]>([])
+
+  const [stores, setStores] = useState<AdminStore[]>([])
   const [storesLoading, setStoresLoading] = useState(false)
   const [storesSaving, setStoresSaving] = useState(false)
   const [selectedStoreId, setSelectedStoreId] = useState("")
   const [storeOfflineModeEnabled, setStoreOfflineModeEnabled] = useState(true)
   const [storeOnlineEnabled, setStoreOnlineEnabled] = useState(false)
+  const [storeFinanceModuleEnabled, setStoreFinanceModuleEnabled] = useState(true)
+
+  const [myStoreSaving, setMyStoreSaving] = useState(false)
+  const [myStoreWhatsappNumber, setMyStoreWhatsappNumber] = useState("")
+  const [myStoreWhatsappMessage, setMyStoreWhatsappMessage] = useState("")
+  const [myStockAlertLowColor, setMyStockAlertLowColor] = useState(DEFAULT_STOCK_ALERT_COLORS.lowStock)
+  const [myStockAlertOutColor, setMyStockAlertOutColor] = useState(DEFAULT_STOCK_ALERT_COLORS.outOfStock)
+  const [myStockAlertOkColor, setMyStockAlertOkColor] = useState(DEFAULT_STOCK_ALERT_COLORS.inStock)
+  const [myStockAlertLowThreshold, setMyStockAlertLowThreshold] = useState(
+    String(DEFAULT_STOCK_ALERT_THRESHOLDS.lowStock)
+  )
+  const [myStockAlertAvailableThreshold, setMyStockAlertAvailableThreshold] = useState(
+    String(DEFAULT_STOCK_ALERT_THRESHOLDS.inStock)
+  )
 
   const isDesktop = typeof window !== "undefined" && Boolean(window.caixaDesktop)
   const isSuperAdmin = user?.role === "SUPER_ADMIN"
@@ -55,6 +89,8 @@ export default function ConfiguracoesPage() {
     setLocalPrinterName(settings.localPrinterName)
     setWifiHost(settings.wifiHost)
     setWifiPort(String(settings.wifiPort || 9100))
+    setHeaderText(settings.headerText || "")
+    setFooterText(settings.footerText || "")
   }, [])
 
   async function loadInstalledPrinters() {
@@ -112,7 +148,52 @@ export default function ConfiguracoesPage() {
     if (!selectedStore) return
     setStoreOfflineModeEnabled(Boolean(selectedStore.offlineModeEnabled))
     setStoreOnlineEnabled(Boolean(selectedStore.onlineStoreEnabled))
+    setStoreFinanceModuleEnabled(selectedStore.financeModuleEnabled !== false)
   }, [selectedStore])
+
+  useEffect(() => {
+    if (isSuperAdmin) return
+    const store = user?.store
+    if (!store) return
+
+    const thresholds = resolveStockAlertThresholds({
+      stockAlertLowThreshold: store.stockAlertLowThreshold ?? null,
+      stockAlertAvailableThreshold: store.stockAlertAvailableThreshold ?? null,
+    })
+
+    setMyStoreWhatsappNumber(store.onlineStoreWhatsappNumber ?? "")
+    setMyStoreWhatsappMessage(store.onlineStoreWhatsappMessage ?? "")
+    setMyStockAlertLowColor(
+      normalizeHexColor(store.stockAlertLowColor, DEFAULT_STOCK_ALERT_COLORS.lowStock)
+    )
+    setMyStockAlertOutColor(
+      normalizeHexColor(store.stockAlertOutColor, DEFAULT_STOCK_ALERT_COLORS.outOfStock)
+    )
+    setMyStockAlertOkColor(
+      normalizeHexColor(store.stockAlertOkColor, DEFAULT_STOCK_ALERT_COLORS.inStock)
+    )
+    setMyStockAlertLowThreshold(String(thresholds.lowStock))
+    setMyStockAlertAvailableThreshold(String(thresholds.inStock))
+  }, [
+    isSuperAdmin,
+    user?.store?.onlineStoreWhatsappNumber,
+    user?.store?.onlineStoreWhatsappMessage,
+    user?.store?.stockAlertLowColor,
+    user?.store?.stockAlertOutColor,
+    user?.store?.stockAlertOkColor,
+    user?.store?.stockAlertLowThreshold,
+    user?.store?.stockAlertAvailableThreshold,
+  ])
+
+  const selectedStorefrontPath = useMemo(() => {
+    if (!selectedStore) return ""
+    return `/loja?slug=${encodeURIComponent(selectedStore.slug)}`
+  }, [selectedStore])
+
+  const myStorefrontPath = useMemo(() => {
+    if (!user?.store?.slug) return ""
+    return `/loja?slug=${encodeURIComponent(user.store.slug)}`
+  }, [user?.store?.slug])
 
   const validationError = useMemo(() => {
     if (!enabled) return null
@@ -146,12 +227,14 @@ export default function ConfiguracoesPage() {
       localPrinterName: localPrinterName.trim(),
       wifiHost: wifiHost.trim(),
       wifiPort: Math.max(1, Math.floor(Number(wifiPort) || 9100)),
+      headerText,
+      footerText,
       updatedAt: defaults.updatedAt,
     })
     return saved
   }
 
-  function handleSave() {
+  function handleSavePrinter() {
     const saved = persistSettings()
     if (!saved) return
     toast.success("Configuracoes de impressora salvas")
@@ -207,7 +290,7 @@ export default function ConfiguracoesPage() {
     toast.error(result.error || "Falha ao enviar teste de impressao")
   }
 
-  async function handleSaveStoreSettings() {
+  async function handleSaveStoreSettingsAsSuperAdmin() {
     if (!selectedStoreId) {
       toast.error("Selecione uma loja para continuar")
       return
@@ -218,6 +301,7 @@ export default function ConfiguracoesPage() {
       const updatedStore = await updateStore(selectedStoreId, {
         offlineModeEnabled: storeOfflineModeEnabled,
         onlineStoreEnabled: storeOnlineEnabled,
+        financeModuleEnabled: storeFinanceModuleEnabled,
       })
       setStores((prev) => prev.map((store) => (store.id === updatedStore.id ? updatedStore : store)))
       setOfflineModeEnabledForStore(updatedStore.id, updatedStore.offlineModeEnabled)
@@ -229,6 +313,48 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  async function handleSaveMyStoreSettings() {
+    const lowThreshold = parseThresholdInput(myStockAlertLowThreshold)
+    const availableThreshold = parseThresholdInput(myStockAlertAvailableThreshold)
+
+    if (lowThreshold == null || availableThreshold == null) {
+      toast.error("Informe limites válidos para estoque baixo e disponível")
+      return
+    }
+    if (availableThreshold <= lowThreshold) {
+      toast.error("O valor de estoque disponível precisa ser maior que o estoque baixo")
+      return
+    }
+
+    setMyStoreSaving(true)
+    try {
+      await updateMyStoreSettings({
+        onlineStoreWhatsappNumber: myStoreWhatsappNumber.trim() || null,
+        onlineStoreWhatsappMessage: myStoreWhatsappMessage.trim() || null,
+        stockAlertLowColor: normalizeHexColor(
+          myStockAlertLowColor,
+          DEFAULT_STOCK_ALERT_COLORS.lowStock
+        ),
+        stockAlertOutColor: normalizeHexColor(
+          myStockAlertOutColor,
+          DEFAULT_STOCK_ALERT_COLORS.outOfStock
+        ),
+        stockAlertOkColor: normalizeHexColor(
+          myStockAlertOkColor,
+          DEFAULT_STOCK_ALERT_COLORS.inStock
+        ),
+        stockAlertLowThreshold: lowThreshold,
+        stockAlertAvailableThreshold: availableThreshold,
+      })
+      await refreshUser()
+      toast.success("Configuracoes da loja salvas")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao salvar configuracao da loja")
+    } finally {
+      setMyStoreSaving(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div>
@@ -236,7 +362,7 @@ export default function ConfiguracoesPage() {
         <p className="text-sm text-muted-foreground">
           {isSuperAdmin
             ? "Defina as politicas de operacao por loja."
-            : "Defina como os comprovantes de venda devem ser impressos."}
+            : "Defina as configuracoes da loja e como os comprovantes devem ser impressos."}
         </p>
       </div>
 
@@ -302,10 +428,25 @@ export default function ConfiguracoesPage() {
               />
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="finance-module-enabled">Modulo financeiro</Label>
+                <p className="text-xs text-muted-foreground">
+                  Controla o acesso ao Financeiro para usuarios da loja.
+                </p>
+              </div>
+              <Switch
+                id="finance-module-enabled"
+                checked={storeFinanceModuleEnabled}
+                onCheckedChange={setStoreFinanceModuleEnabled}
+                disabled={!selectedStoreId || storesLoading}
+              />
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                onClick={() => void handleSaveStoreSettings()}
+                onClick={() => void handleSaveStoreSettingsAsSuperAdmin()}
                 className="gap-2"
                 disabled={!selectedStoreId || storesLoading || storesSaving}
               >
@@ -318,13 +459,176 @@ export default function ConfiguracoesPage() {
                 className="gap-2"
                 disabled={!selectedStore || !storeOnlineEnabled}
                 onClick={() => {
-                  if (!selectedStore) return
-                  const query = encodeURIComponent(selectedStore.slug)
-                  window.open(`/loja?slug=${query}`, "_blank", "noopener,noreferrer")
+                  if (!selectedStorefrontPath) return
+                  window.open(selectedStorefrontPath, "_blank", "noopener,noreferrer")
                 }}
               >
                 <ExternalLink className="size-4" />
-                Abrir loja online
+                Visualizar site online
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isSuperAdmin && user?.store && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Store className="size-5" />
+              Configuracoes da Loja
+            </CardTitle>
+            <CardDescription>
+              Parametrize o atendimento da loja online e os alertas de estoque desta loja.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium text-foreground">Contato da loja online</Label>
+                <p className="text-xs text-muted-foreground">
+                  Configure WhatsApp e mensagem padrao para solicitar itens da vitrine.
+                </p>
+                {!user.store.onlineStoreEnabled && (
+                  <p className="text-xs text-amber-600">
+                    A loja online está desativada. A ativação é feita apenas no super admin.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="my-store-online-whatsapp">WhatsApp da loja</Label>
+                <Input
+                  id="my-store-online-whatsapp"
+                  value={myStoreWhatsappNumber}
+                  onChange={(event) => setMyStoreWhatsappNumber(event.target.value)}
+                  placeholder="Ex.: 5571999999999"
+                  disabled={myStoreSaving}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Informe com DDI e DDD. Exemplo: 5571999999999.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="my-store-online-message">Mensagem padrao</Label>
+                <Textarea
+                  id="my-store-online-message"
+                  value={myStoreWhatsappMessage}
+                  onChange={(event) => setMyStoreWhatsappMessage(event.target.value)}
+                  placeholder="Ola! Tenho interesse no produto {produto}. Pode me ajudar?"
+                  rows={3}
+                  disabled={myStoreSaving}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Marcadores aceitos: {"{produto}"}, {"{sku}"}, {"{preco}"}, {"{estoque}"}, {"{loja}"}.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="my-online-store-url">URL da loja online</Label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    id="my-online-store-url"
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={!myStorefrontPath || !user.store.onlineStoreEnabled}
+                    onClick={() => {
+                      if (!myStorefrontPath) return
+                      window.open(myStorefrontPath, "_blank", "noopener,noreferrer")
+                    }}
+                  >
+                    <ExternalLink className="size-4" />
+                    Visualizar site online
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium text-foreground">Alertas de estoque</Label>
+                <p className="text-xs text-muted-foreground">
+                  Defina as cores e os limites numéricos para estoque baixo e disponível.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="my-stock-alert-out-color">Sem estoque</Label>
+                  <Input
+                    id="my-stock-alert-out-color"
+                    type="color"
+                    value={myStockAlertOutColor}
+                    onChange={(event) => setMyStockAlertOutColor(event.target.value)}
+                    className="h-10 cursor-pointer p-1"
+                    disabled={myStoreSaving}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="my-stock-alert-low-color">Estoque baixo</Label>
+                  <Input
+                    id="my-stock-alert-low-color"
+                    type="color"
+                    value={myStockAlertLowColor}
+                    onChange={(event) => setMyStockAlertLowColor(event.target.value)}
+                    className="h-10 cursor-pointer p-1"
+                    disabled={myStoreSaving}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="my-stock-alert-ok-color">Estoque disponível</Label>
+                  <Input
+                    id="my-stock-alert-ok-color"
+                    type="color"
+                    value={myStockAlertOkColor}
+                    onChange={(event) => setMyStockAlertOkColor(event.target.value)}
+                    className="h-10 cursor-pointer p-1"
+                    disabled={myStoreSaving}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="my-stock-alert-low-threshold">Valor de estoque baixo (até)</Label>
+                  <Input
+                    id="my-stock-alert-low-threshold"
+                    value={myStockAlertLowThreshold}
+                    onChange={(event) =>
+                      setMyStockAlertLowThreshold(event.target.value.replace(/[^\d]/g, ""))
+                    }
+                    placeholder="5"
+                    inputMode="numeric"
+                    disabled={myStoreSaving}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="my-stock-alert-available-threshold">Valor de estoque disponível (a partir de)</Label>
+                  <Input
+                    id="my-stock-alert-available-threshold"
+                    value={myStockAlertAvailableThreshold}
+                    onChange={(event) =>
+                      setMyStockAlertAvailableThreshold(event.target.value.replace(/[^\d]/g, ""))
+                    }
+                    placeholder="6"
+                    inputMode="numeric"
+                    disabled={myStoreSaving}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => void handleSaveMyStoreSettings()}
+                className="gap-2"
+                disabled={myStoreSaving}
+              >
+                <Save className="size-4" />
+                {myStoreSaving ? "Salvando..." : "Salvar configuracao da loja"}
               </Button>
             </div>
           </CardContent>
@@ -333,154 +637,175 @@ export default function ConfiguracoesPage() {
 
       {!isSuperAdmin && (
         <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Printer className="size-5" />
-            Impressora
-          </CardTitle>
-          <CardDescription>
-            Configure impressora conectada localmente ou impressora de rede Wi-Fi.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div className="space-y-0.5">
-              <Label htmlFor="printer-enabled">Impressao automatica de comprovantes</Label>
-              <p className="text-xs text-muted-foreground">
-                Quando ativa, toda venda finalizada dispara impressao automaticamente.
-              </p>
-            </div>
-            <Switch
-              id="printer-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Tipo de conexao</Label>
-              <Select
-                value={connectionType}
-                onValueChange={(value) => setConnectionType(value as "local" | "wifi")}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="local">
-                    <span className="inline-flex items-center gap-2">
-                      <Cable className="size-4" />
-                      Conectada (USB/local)
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="wifi">
-                    <span className="inline-flex items-center gap-2">
-                      <Wifi className="size-4" />
-                      Wi-Fi (rede)
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Printer className="size-5" />
+              Impressora
+            </CardTitle>
+            <CardDescription>
+              Configure impressora conectada localmente ou impressora de rede Wi-Fi.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="printer-enabled">Impressao automatica de comprovantes</Label>
+                <p className="text-xs text-muted-foreground">
+                  Quando ativa, toda venda finalizada dispara impressao automaticamente.
+                </p>
+              </div>
+              <Switch id="printer-enabled" checked={enabled} onCheckedChange={setEnabled} />
             </div>
 
-            {connectionType === "local" && isDesktop && (
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Impressora detectada</Label>
-                <div className="flex gap-2">
-                  <Select
-                    value={localPrinterName || undefined}
-                    onValueChange={setLocalPrinterName}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {installedPrinters.length === 0 ? (
-                        <SelectItem value="__empty__" disabled>
-                          Nenhuma impressora detectada
-                        </SelectItem>
-                      ) : (
-                        installedPrinters.map((printer) => (
-                          <SelectItem key={printer.name} value={printer.name}>
-                            {printer.name}
-                            {printer.isDefault ? " (padrao)" : ""}
+                <Label>Tipo de conexao</Label>
+                <Select
+                  value={connectionType}
+                  onValueChange={(value) => setConnectionType(value as "local" | "wifi")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">
+                      <span className="inline-flex items-center gap-2">
+                        <Cable className="size-4" />
+                        Conectada (USB/local)
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="wifi">
+                      <span className="inline-flex items-center gap-2">
+                        <Wifi className="size-4" />
+                        Wi-Fi (rede)
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {connectionType === "local" && isDesktop && (
+                <div className="space-y-1.5">
+                  <Label>Impressora detectada</Label>
+                  <div className="flex gap-2">
+                    <Select value={localPrinterName || undefined} onValueChange={setLocalPrinterName}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {installedPrinters.length === 0 ? (
+                          <SelectItem value="__empty__" disabled>
+                            Nenhuma impressora detectada
                           </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => void loadInstalledPrinters()}
-                    disabled={loadingPrinters}
-                    title="Atualizar lista de impressoras"
-                  >
-                    <RefreshCw className={`size-4 ${loadingPrinters ? "animate-spin" : ""}`} />
-                  </Button>
+                        ) : (
+                          installedPrinters.map((printer) => (
+                            <SelectItem key={printer.name} value={printer.name}>
+                              {printer.name}
+                              {printer.isDefault ? " (padrao)" : ""}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => void loadInstalledPrinters()}
+                      disabled={loadingPrinters}
+                      title="Atualizar lista de impressoras"
+                    >
+                      <RefreshCw className={`size-4 ${loadingPrinters ? "animate-spin" : ""}`} />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {connectionType === "local" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="printer-local-name">Nome da impressora local</Label>
+                <Input
+                  id="printer-local-name"
+                  value={localPrinterName}
+                  onChange={(event) => setLocalPrinterName(event.target.value)}
+                  placeholder="Ex.: IDPRINT"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Em desktop, use o nome exato da fila CUPS. Exemplo: IDPRINT.
+                </p>
+              </div>
+            )}
+
+            {connectionType === "wifi" && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="printer-wifi-host">IP/Host da impressora</Label>
+                  <Input
+                    id="printer-wifi-host"
+                    value={wifiHost}
+                    onChange={(event) => setWifiHost(event.target.value)}
+                    placeholder="Ex.: 192.168.0.55"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="printer-wifi-port">Porta TCP</Label>
+                  <Input
+                    id="printer-wifi-port"
+                    value={wifiPort}
+                    onChange={(event) => setWifiPort(event.target.value.replace(/[^\d]/g, ""))}
+                    placeholder="9100"
+                  />
                 </div>
               </div>
             )}
-          </div>
 
-          {connectionType === "local" && (
-            <div className="space-y-1.5">
-              <Label htmlFor="printer-local-name">Nome da impressora local</Label>
-              <Input
-                id="printer-local-name"
-                value={localPrinterName}
-                onChange={(event) => setLocalPrinterName(event.target.value)}
-                placeholder="Ex.: IDPRINT"
-              />
-              <p className="text-xs text-muted-foreground">
-                Em desktop, use o nome exato da fila CUPS. Exemplo: IDPRINT.
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="printer-header-text">Cabecalho da impressao</Label>
+                <Textarea
+                  id="printer-header-text"
+                  value={headerText}
+                  onChange={(event) => setHeaderText(event.target.value)}
+                  placeholder="Ex.: Loja XPTO - CNPJ 00.000.000/0001-00"
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="printer-footer-text">Rodape da impressao</Label>
+                <Textarea
+                  id="printer-footer-text"
+                  value={footerText}
+                  onChange={(event) => setFooterText(event.target.value)}
+                  placeholder="Ex.: Troca em ate 7 dias com comprovante."
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            {validationError && (
+              <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {validationError}
               </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={handleSavePrinter} className="gap-2">
+                <Save className="size-4" />
+                Salvar configuracoes
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleTestPrint()}
+                className="gap-2"
+              >
+                <TestTube2 className="size-4" />
+                Testar impressao
+              </Button>
             </div>
-          )}
-
-          {connectionType === "wifi" && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="printer-wifi-host">IP/Host da impressora</Label>
-                <Input
-                  id="printer-wifi-host"
-                  value={wifiHost}
-                  onChange={(event) => setWifiHost(event.target.value)}
-                  placeholder="Ex.: 192.168.0.55"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="printer-wifi-port">Porta TCP</Label>
-                <Input
-                  id="printer-wifi-port"
-                  value={wifiPort}
-                  onChange={(event) => setWifiPort(event.target.value.replace(/[^\d]/g, ""))}
-                  placeholder="9100"
-                />
-              </div>
-            </div>
-          )}
-
-          {validationError && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {validationError}
-            </p>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={handleSave} className="gap-2">
-              <Save className="size-4" />
-              Salvar configuracoes
-            </Button>
-            <Button type="button" variant="outline" onClick={() => void handleTestPrint()} className="gap-2">
-              <TestTube2 className="size-4" />
-              Testar impressao
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

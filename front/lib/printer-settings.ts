@@ -8,6 +8,8 @@ export type PrinterSettings = {
   localPrinterName: string
   wifiHost: string
   wifiPort: number
+  headerText: string
+  footerText: string
   updatedAt: string | null
 }
 
@@ -17,7 +19,18 @@ const DEFAULT_PRINTER_SETTINGS: PrinterSettings = {
   localPrinterName: "",
   wifiHost: "",
   wifiPort: 9100,
+  headerText: "",
+  footerText: "",
   updatedAt: null,
+}
+
+function normalizeReceiptCustomText(value: unknown): string {
+  if (typeof value !== "string") return ""
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim()
+    .slice(0, 280)
 }
 
 function getSettingsStorageKey(): string {
@@ -45,6 +58,8 @@ function normalizePrinterSettings(value: unknown): PrinterSettings {
       typeof maybe.localPrinterName === "string" ? maybe.localPrinterName.trim() : "",
     wifiHost: typeof maybe.wifiHost === "string" ? maybe.wifiHost.trim() : "",
     wifiPort,
+    headerText: normalizeReceiptCustomText(maybe.headerText),
+    footerText: normalizeReceiptCustomText(maybe.footerText),
     updatedAt:
       typeof maybe.updatedAt === "string" && maybe.updatedAt.trim()
         ? maybe.updatedAt

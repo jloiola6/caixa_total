@@ -52,7 +52,6 @@ const storeUserNavItems = [
 
 const superAdminNavItems = [
   { title: "Admin", href: "/admin", icon: Shield },
-  { title: "Financeiro", href: "/financeiro", icon: Landmark },
   { title: "Configuracoes", href: "/configuracoes", icon: Settings },
 ]
 
@@ -144,7 +143,12 @@ export function AppSidebar() {
     }
   }
 
-  const navItems = user?.role === "SUPER_ADMIN" ? superAdminNavItems : storeUserNavItems
+  const storeNavItems =
+    user?.store?.financeModuleEnabled === false
+      ? storeUserNavItems.filter((item) => item.href !== "/financeiro")
+      : storeUserNavItems
+
+  const navItems = user?.role === "SUPER_ADMIN" ? superAdminNavItems : storeNavItems
 
   return (
     <Sidebar>

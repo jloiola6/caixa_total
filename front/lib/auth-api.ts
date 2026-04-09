@@ -40,6 +40,14 @@ export type AuthUser = {
     slug: string;
     offlineModeEnabled?: boolean;
     onlineStoreEnabled?: boolean;
+    financeModuleEnabled?: boolean;
+    onlineStoreWhatsappNumber?: string | null;
+    onlineStoreWhatsappMessage?: string | null;
+    stockAlertLowColor?: string;
+    stockAlertOutColor?: string;
+    stockAlertOkColor?: string;
+    stockAlertLowThreshold?: number;
+    stockAlertAvailableThreshold?: number;
   } | null;
 };
 
@@ -114,4 +122,24 @@ export async function getMe(): Promise<AuthUser | null> {
   });
   if (!res.ok) return null;
   return res.json();
+}
+
+export async function updateMyStoreSettings(data: {
+  onlineStoreWhatsappNumber?: string | null;
+  onlineStoreWhatsappMessage?: string | null;
+  stockAlertLowColor?: string;
+  stockAlertOutColor?: string;
+  stockAlertOkColor?: string;
+  stockAlertLowThreshold?: number;
+  stockAlertAvailableThreshold?: number;
+}): Promise<NonNullable<AuthUser["store"]>> {
+  const token = getStoredToken();
+  if (!token) throw new Error("Usuário não autenticado");
+  const res = await fetch(getApiUrl("/auth/me/store-settings"), {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const out = await parseJsonWithFallback(res, "Falha ao salvar configurações da loja");
+  return out as NonNullable<AuthUser["store"]>;
 }

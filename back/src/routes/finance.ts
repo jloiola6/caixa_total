@@ -59,6 +59,39 @@ function getStoreId(req: AuthenticatedRequest, res: Response): string | null {
   return req.user.storeId;
 }
 
+financeRouter.use(async (req, res, next) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const storeId = getStoreId(authReq, res);
+    if (!storeId) return;
+
+    if (authReq.user.role !== "STORE_USER") {
+      next();
+      return;
+    }
+
+    const store = await prisma.store.findUnique({
+      where: { id: storeId },
+      select: { financeModuleEnabled: true },
+    });
+
+    if (!store) {
+      res.status(404).json({ error: "Loja não encontrada" });
+      return;
+    }
+
+    if (!store.financeModuleEnabled) {
+      res.status(403).json({ error: "Módulo financeiro desativado para esta loja" });
+      return;
+    }
+
+    next();
+  } catch (e) {
+    console.error("Finance module policy check error:", e);
+    res.status(500).json({ error: "Erro ao validar política do módulo financeiro" });
+  }
+});
+
 function parseDate(value: unknown, fallback: Date): Date {
   if (typeof value !== "string") return fallback;
   const d = new Date(value);

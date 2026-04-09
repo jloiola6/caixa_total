@@ -143,6 +143,7 @@ reportRouter.get("/sales", async (req, res) => {
       createdAt: s.createdAt.toISOString(),
       totalCents: s.totalCents,
       itemsCount: s.itemsCount,
+      discountCents: s.discountCents,
       customerName: s.customerName,
       customerPhone: s.customerPhone,
       payments: s.payments.map((p) => ({ method: p.method, amountCents: p.amountCents })),
@@ -155,6 +156,7 @@ reportRouter.get("/sales", async (req, res) => {
         qty: item.qty,
         unitPriceCents: item.unitPriceCents,
         lineTotalCents: item.lineTotalCents,
+        bonusQty: item.bonusQty,
         productCategory:
           productCategoryById.get(normalizeProductId(item.productId)) ?? null,
       })),

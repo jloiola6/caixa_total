@@ -73,6 +73,13 @@ import { getProducts, deleteProduct, getProductById } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
 import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import { formatCurrency } from "@/lib/format"
+import { useAuth } from "@/contexts/auth-context"
+import {
+  classifyStockLevel,
+  getReadableTextColor,
+  resolveStockAlertColors,
+  resolveStockAlertThresholds,
+} from "@/lib/store-settings"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
 import { toast } from "sonner"
@@ -254,7 +261,16 @@ function productSubtitle(product: Product): string {
   return parts.join(" | ")
 }
 
+function stockBadgeStyle(backgroundColor: string) {
+  return {
+    backgroundColor,
+    borderColor: backgroundColor,
+    color: getReadableTextColor(backgroundColor),
+  }
+}
+
 export default function ProdutosPage() {
+  const { user } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
   const [query, setQuery] = useState("")
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -277,6 +293,27 @@ export default function ProdutosPage() {
   const [tableItemsPerPage, setTableItemsPerPage] = useState(ITEMS_PER_PAGE_OPTIONS[0])
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
   const [advancedReportOpen, setAdvancedReportOpen] = useState(false)
+  const stockAlertColors = useMemo(
+    () =>
+      resolveStockAlertColors({
+        stockAlertLowColor: user?.store?.stockAlertLowColor ?? null,
+        stockAlertOutColor: user?.store?.stockAlertOutColor ?? null,
+        stockAlertOkColor: user?.store?.stockAlertOkColor ?? null,
+      }),
+    [
+      user?.store?.stockAlertLowColor,
+      user?.store?.stockAlertOutColor,
+      user?.store?.stockAlertOkColor,
+    ]
+  )
+  const stockAlertThresholds = useMemo(
+    () =>
+      resolveStockAlertThresholds({
+        stockAlertLowThreshold: user?.store?.stockAlertLowThreshold ?? null,
+        stockAlertAvailableThreshold: user?.store?.stockAlertAvailableThreshold ?? null,
+      }),
+    [user?.store?.stockAlertLowThreshold, user?.store?.stockAlertAvailableThreshold]
+  )
 
   const selectedProducts = useMemo(() => {
     return Array.from(selectedIds)
@@ -312,8 +349,9 @@ export default function ProdutosPage() {
       totalCostCents += quantity * unitCostCents
 
       if (product.costCents == null) productsWithoutCost += 1
-      if (quantity === 0) outOfStockProducts += 1
-      else if (quantity <= 5) lowStockProducts += 1
+      const stockLevel = classifyStockLevel(quantity, stockAlertThresholds)
+      if (stockLevel === "out") outOfStockProducts += 1
+      else if (stockLevel === "low") lowStockProducts += 1
 
       const currentCategory = categoryTotals.get(product.category) ?? {
         products: 0,
@@ -351,7 +389,7 @@ export default function ProdutosPage() {
       productsWithoutCost,
       categoryBreakdown,
     }
-  }, [products])
+  }, [products, stockAlertThresholds])
 
   const totalTablePages = useMemo(() => {
     return Math.max(1, Math.ceil(products.length / tableItemsPerPage))
@@ -464,15 +502,24 @@ export default function ProdutosPage() {
   }
 
   function stockBadge(stock: number) {
-    if (stock === 0)
-      return <Badge variant="destructive">Sem estoque</Badge>
-    if (stock <= 5)
+    const stockLevel = classifyStockLevel(stock, stockAlertThresholds)
+    if (stockLevel === "out")
       return (
-        <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-          {stock}
+        <Badge variant="secondary" style={stockBadgeStyle(stockAlertColors.outOfStock)}>
+          Sem estoque
         </Badge>
       )
-    return <Badge variant="secondary">{stock}</Badge>
+    if (stockLevel === "low")
+      return (
+        <Badge variant="secondary" style={stockBadgeStyle(stockAlertColors.lowStock)}>
+          {stock} (ate {stockAlertThresholds.lowStock})
+        </Badge>
+      )
+    return (
+      <Badge variant="secondary" style={stockBadgeStyle(stockAlertColors.inStock)}>
+        {stock} (a partir de {stockAlertThresholds.inStock})
+      </Badge>
+    )
   }
 
   const tableRangeStart = products.length === 0 ? 0 : (tablePage - 1) * tableItemsPerPage + 1

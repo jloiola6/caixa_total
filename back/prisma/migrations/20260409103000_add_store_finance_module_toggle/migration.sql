@@ -1,0 +1,2 @@
+ALTER TABLE "Store"
+ADD COLUMN "financeModuleEnabled" BOOLEAN NOT NULL DEFAULT true;

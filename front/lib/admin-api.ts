@@ -6,6 +6,14 @@ export type Store = {
   slug: string;
   offlineModeEnabled: boolean;
   onlineStoreEnabled: boolean;
+  financeModuleEnabled: boolean;
+  onlineStoreWhatsappNumber: string | null;
+  onlineStoreWhatsappMessage: string | null;
+  stockAlertLowColor: string;
+  stockAlertOutColor: string;
+  stockAlertOkColor: string;
+  stockAlertLowThreshold: number;
+  stockAlertAvailableThreshold: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -29,7 +37,18 @@ export async function getStores(): Promise<Store[]> {
 export async function createStore(
   name: string,
   slug: string,
-  options?: { offlineModeEnabled?: boolean; onlineStoreEnabled?: boolean }
+  options?: {
+    offlineModeEnabled?: boolean;
+    onlineStoreEnabled?: boolean;
+    financeModuleEnabled?: boolean;
+    onlineStoreWhatsappNumber?: string | null;
+    onlineStoreWhatsappMessage?: string | null;
+    stockAlertLowColor?: string;
+    stockAlertOutColor?: string;
+    stockAlertOkColor?: string;
+    stockAlertLowThreshold?: number;
+    stockAlertAvailableThreshold?: number;
+  }
 ): Promise<Store> {
   const res = await fetch(getApiUrl("/admin/stores"), {
     method: "POST",
@@ -48,6 +67,14 @@ export async function updateStore(
     slug?: string;
     offlineModeEnabled?: boolean;
     onlineStoreEnabled?: boolean;
+    financeModuleEnabled?: boolean;
+    onlineStoreWhatsappNumber?: string | null;
+    onlineStoreWhatsappMessage?: string | null;
+    stockAlertLowColor?: string;
+    stockAlertOutColor?: string;
+    stockAlertOkColor?: string;
+    stockAlertLowThreshold?: number;
+    stockAlertAvailableThreshold?: number;
   }
 ): Promise<Store> {
   const res = await fetch(getApiUrl(`/admin/stores/${id}`), {

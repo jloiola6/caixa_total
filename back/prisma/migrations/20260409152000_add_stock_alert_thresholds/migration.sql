@@ -1,0 +1,3 @@
+ALTER TABLE "Store"
+ADD COLUMN "stockAlertLowThreshold" INTEGER NOT NULL DEFAULT 5,
+ADD COLUMN "stockAlertAvailableThreshold" INTEGER NOT NULL DEFAULT 6;

@@ -812,6 +812,8 @@ export interface CreateSaleInput {
   customerName?: string | null
   customerPhone?: string | null
   lineTotalOverridesCents?: Record<string, number>
+  orderDiscountCents?: number
+  bonusQtyByProductId?: Record<string, number>
 }
 
 export interface CancelSaleResult {
@@ -824,7 +826,15 @@ export interface CancelSaleResult {
 export function createSale(
   input: CreateSaleInput
 ): { sale: Sale; saleItems: SaleItem[] } | null {
-  const { items, payments, customerName, customerPhone, lineTotalOverridesCents } = input
+  const {
+    items,
+    payments,
+    customerName,
+    customerPhone,
+    lineTotalOverridesCents,
+    orderDiscountCents,
+    bonusQtyByProductId,
+  } = input
   if (items.length === 0) return null
 
   const products = read<Product>(getProductsKey())
@@ -925,10 +935,16 @@ export function createSale(
   const saleItems: SaleItem[] = items.map((item) => {
     const defaultLineTotal = item.product.priceCents * item.qty
     const overriddenTotal = lineTotalOverridesCents?.[item.product.id]
-    const lineTotalCents =
+    const adjustedLineTotalCents =
       typeof overriddenTotal === "number" && Number.isFinite(overriddenTotal)
         ? Math.max(0, Math.floor(overriddenTotal))
         : defaultLineTotal
+    const bonusQtyRaw = bonusQtyByProductId?.[item.product.id]
+    const bonusQty = Number.isFinite(bonusQtyRaw)
+      ? Math.min(item.qty, Math.max(0, Math.floor(Number(bonusQtyRaw))))
+      : 0
+    const bonusValueCents = item.product.priceCents * bonusQty
+    const lineTotalCents = Math.max(0, adjustedLineTotalCents - bonusValueCents)
 
     return {
       id: randomUUID(),
@@ -937,12 +953,18 @@ export function createSale(
       productName: item.product.name,
       sku: item.product.sku,
       qty: item.qty,
-      unitPriceCents: item.qty > 0 ? Math.floor(lineTotalCents / item.qty) : item.product.priceCents,
+      unitPriceCents: item.product.priceCents,
       lineTotalCents,
+      bonusQty,
     }
   })
 
-  const totalCents = saleItems.reduce((sum, si) => sum + si.lineTotalCents, 0)
+  const subtotalCents = saleItems.reduce((sum, si) => sum + si.lineTotalCents, 0)
+  const discountRaw = Number(orderDiscountCents ?? 0)
+  const discountCents = Number.isFinite(discountRaw)
+    ? Math.min(subtotalCents, Math.max(0, Math.floor(discountRaw)))
+    : 0
+  const totalCents = subtotalCents - discountCents
   const itemsCount = saleItems.reduce((sum, si) => sum + si.qty, 0)
   const normalizedPayments = normalizeSalePayments(payments)
   const totalPaidCents = normalizedPayments.reduce((sum, p) => sum + p.amountCents, 0)
@@ -955,6 +977,7 @@ export function createSale(
     createdAt: now,
     totalCents,
     itemsCount,
+    discountCents,
     payments: normalizedPayments,
     customerName: customerName?.trim() || null,
     customerPhone: customerPhone?.trim() || null,

@@ -13,6 +13,74 @@ const resend = config.resendApiKey ? new Resend(config.resendApiKey) : null;
 
 const SALT_ROUNDS = 10;
 const TOKEN_EXPIRY_HOURS = 1;
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+const DEFAULT_STOCK_ALERT_LOW_COLOR = "#f59e0b";
+const DEFAULT_STOCK_ALERT_OUT_COLOR = "#ef4444";
+const DEFAULT_STOCK_ALERT_OK_COLOR = "#22c55e";
+const DEFAULT_STOCK_ALERT_LOW_THRESHOLD = 5;
+const DEFAULT_STOCK_ALERT_AVAILABLE_THRESHOLD = 6;
+
+function normalizeOptionalWhatsappNumber(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const digitsOnly = value.replace(/[^\d]/g, "");
+  return digitsOnly.length > 0 ? digitsOnly : null;
+}
+
+function normalizeOptionalMessage(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeStockAlertColor(value: string | undefined, fallback: string): string | null {
+  const trimmed = (value ?? "").trim().toLowerCase();
+  if (!trimmed) return fallback;
+  if (!HEX_COLOR_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+function normalizeStockAlertThreshold(value: number | undefined, fallback: number): number | null {
+  if (value === undefined) return fallback;
+  if (!Number.isFinite(value)) return null;
+  const normalized = Math.floor(value);
+  if (normalized < 0 || normalized > 1000000) return null;
+  return normalized;
+}
+
+function buildStorePayload(
+  store: {
+    id: string;
+    name: string;
+    slug: string;
+    offlineModeEnabled: boolean;
+    onlineStoreEnabled: boolean;
+    financeModuleEnabled: boolean;
+    onlineStoreWhatsappNumber: string | null;
+    onlineStoreWhatsappMessage: string | null;
+    stockAlertLowColor: string;
+    stockAlertOutColor: string;
+    stockAlertOkColor: string;
+    stockAlertLowThreshold: number;
+    stockAlertAvailableThreshold: number;
+  } | null
+) {
+  if (!store) return null;
+  return {
+    id: store.id,
+    name: store.name,
+    slug: store.slug,
+    offlineModeEnabled: store.offlineModeEnabled,
+    onlineStoreEnabled: store.onlineStoreEnabled,
+    financeModuleEnabled: store.financeModuleEnabled,
+    onlineStoreWhatsappNumber: store.onlineStoreWhatsappNumber,
+    onlineStoreWhatsappMessage: store.onlineStoreWhatsappMessage,
+    stockAlertLowColor: store.stockAlertLowColor,
+    stockAlertOutColor: store.stockAlertOutColor,
+    stockAlertOkColor: store.stockAlertOkColor,
+    stockAlertLowThreshold: store.stockAlertLowThreshold,
+    stockAlertAvailableThreshold: store.stockAlertAvailableThreshold,
+  };
+}
 
 authRouter.post("/login", async (req, res) => {
   try {
@@ -49,15 +117,7 @@ authRouter.post("/login", async (req, res) => {
         name: user.name,
         role: user.role,
         storeId: user.storeId,
-        store: user.store
-          ? {
-              id: user.store.id,
-              name: user.store.name,
-              slug: user.store.slug,
-              offlineModeEnabled: user.store.offlineModeEnabled,
-              onlineStoreEnabled: user.store.onlineStoreEnabled,
-            }
-          : null,
+        store: buildStorePayload(user.store),
       },
     });
   } catch (e) {
@@ -154,18 +214,210 @@ authRouter.get("/me", authMiddleware, async (req, res) => {
       name: user.name,
       role: user.role,
       storeId: user.storeId,
-      store: user.store
-        ? {
-            id: user.store.id,
-            name: user.store.name,
-            slug: user.store.slug,
-            offlineModeEnabled: user.store.offlineModeEnabled,
-            onlineStoreEnabled: user.store.onlineStoreEnabled,
-          }
-        : null,
+      store: buildStorePayload(user.store),
     });
   } catch (e) {
     console.error("Me error:", e);
     res.status(500).json({ error: "Erro ao obter usuário" });
+  }
+});
+
+authRouter.patch("/me/store-settings", authMiddleware, async (req, res) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: "Não autenticado" });
+      return;
+    }
+    if (req.user.role !== "STORE_USER" || !req.user.storeId) {
+      res.status(403).json({ error: "Apenas usuário de loja pode atualizar estas configurações" });
+      return;
+    }
+
+    const {
+      onlineStoreWhatsappNumber,
+      onlineStoreWhatsappMessage,
+      stockAlertLowColor,
+      stockAlertOutColor,
+      stockAlertOkColor,
+      stockAlertLowThreshold,
+      stockAlertAvailableThreshold,
+    } = req.body as {
+      onlineStoreWhatsappNumber?: string | null;
+      onlineStoreWhatsappMessage?: string | null;
+      stockAlertLowColor?: string;
+      stockAlertOutColor?: string;
+      stockAlertOkColor?: string;
+      stockAlertLowThreshold?: number;
+      stockAlertAvailableThreshold?: number;
+    };
+
+    const data: {
+      onlineStoreWhatsappNumber?: string | null;
+      onlineStoreWhatsappMessage?: string | null;
+      stockAlertLowColor?: string;
+      stockAlertOutColor?: string;
+      stockAlertOkColor?: string;
+      stockAlertLowThreshold?: number;
+      stockAlertAvailableThreshold?: number;
+    } = {};
+
+    if (onlineStoreWhatsappNumber !== undefined) {
+      if (
+        onlineStoreWhatsappNumber !== null &&
+        typeof onlineStoreWhatsappNumber !== "string"
+      ) {
+        res.status(400).json({ error: "Número de WhatsApp inválido" });
+        return;
+      }
+      data.onlineStoreWhatsappNumber = normalizeOptionalWhatsappNumber(onlineStoreWhatsappNumber);
+    }
+
+    if (onlineStoreWhatsappMessage !== undefined) {
+      if (
+        onlineStoreWhatsappMessage !== null &&
+        typeof onlineStoreWhatsappMessage !== "string"
+      ) {
+        res.status(400).json({ error: "Mensagem padrão inválida" });
+        return;
+      }
+      data.onlineStoreWhatsappMessage = normalizeOptionalMessage(onlineStoreWhatsappMessage);
+    }
+
+    if (stockAlertLowColor !== undefined) {
+      if (typeof stockAlertLowColor !== "string") {
+        res.status(400).json({ error: "Cor de alerta de estoque baixo inválida" });
+        return;
+      }
+      const normalized = normalizeStockAlertColor(
+        stockAlertLowColor,
+        DEFAULT_STOCK_ALERT_LOW_COLOR
+      );
+      if (!normalized) {
+        res.status(400).json({ error: "Use cores no formato hexadecimal (#RRGGBB)" });
+        return;
+      }
+      data.stockAlertLowColor = normalized;
+    }
+
+    if (stockAlertOutColor !== undefined) {
+      if (typeof stockAlertOutColor !== "string") {
+        res.status(400).json({ error: "Cor de alerta sem estoque inválida" });
+        return;
+      }
+      const normalized = normalizeStockAlertColor(
+        stockAlertOutColor,
+        DEFAULT_STOCK_ALERT_OUT_COLOR
+      );
+      if (!normalized) {
+        res.status(400).json({ error: "Use cores no formato hexadecimal (#RRGGBB)" });
+        return;
+      }
+      data.stockAlertOutColor = normalized;
+    }
+
+    if (stockAlertOkColor !== undefined) {
+      if (typeof stockAlertOkColor !== "string") {
+        res.status(400).json({ error: "Cor de alerta de estoque disponível inválida" });
+        return;
+      }
+      const normalized = normalizeStockAlertColor(
+        stockAlertOkColor,
+        DEFAULT_STOCK_ALERT_OK_COLOR
+      );
+      if (!normalized) {
+        res.status(400).json({ error: "Use cores no formato hexadecimal (#RRGGBB)" });
+        return;
+      }
+      data.stockAlertOkColor = normalized;
+    }
+
+    if (stockAlertLowThreshold !== undefined) {
+      if (typeof stockAlertLowThreshold !== "number") {
+        res.status(400).json({ error: "Valor de estoque baixo inválido" });
+        return;
+      }
+      const normalized = normalizeStockAlertThreshold(
+        stockAlertLowThreshold,
+        DEFAULT_STOCK_ALERT_LOW_THRESHOLD
+      );
+      if (normalized == null) {
+        res.status(400).json({ error: "O valor de estoque baixo é inválido" });
+        return;
+      }
+      data.stockAlertLowThreshold = normalized;
+    }
+
+    if (stockAlertAvailableThreshold !== undefined) {
+      if (typeof stockAlertAvailableThreshold !== "number") {
+        res.status(400).json({ error: "Valor de estoque disponível inválido" });
+        return;
+      }
+      const normalized = normalizeStockAlertThreshold(
+        stockAlertAvailableThreshold,
+        DEFAULT_STOCK_ALERT_AVAILABLE_THRESHOLD
+      );
+      if (normalized == null) {
+        res.status(400).json({ error: "O valor de estoque disponível é inválido" });
+        return;
+      }
+      data.stockAlertAvailableThreshold = normalized;
+    }
+
+    if (
+      data.stockAlertLowThreshold !== undefined ||
+      data.stockAlertAvailableThreshold !== undefined
+    ) {
+      const currentStore = await prisma.store.findUnique({
+        where: { id: req.user.storeId },
+        select: {
+          stockAlertLowThreshold: true,
+          stockAlertAvailableThreshold: true,
+        },
+      });
+      if (!currentStore) {
+        res.status(404).json({ error: "Loja não encontrada" });
+        return;
+      }
+      const lowThreshold =
+        data.stockAlertLowThreshold ?? currentStore.stockAlertLowThreshold;
+      const availableThreshold =
+        data.stockAlertAvailableThreshold ?? currentStore.stockAlertAvailableThreshold;
+      if (availableThreshold <= lowThreshold) {
+        res.status(400).json({
+          error: "O valor de estoque disponível deve ser maior que o estoque baixo",
+        });
+        return;
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      res.status(400).json({ error: "Nenhuma configuração válida enviada" });
+      return;
+    }
+
+    const updatedStore = await prisma.store.update({
+      where: { id: req.user.storeId },
+      data,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        offlineModeEnabled: true,
+        onlineStoreEnabled: true,
+        financeModuleEnabled: true,
+        onlineStoreWhatsappNumber: true,
+        onlineStoreWhatsappMessage: true,
+        stockAlertLowColor: true,
+        stockAlertOutColor: true,
+        stockAlertOkColor: true,
+        stockAlertLowThreshold: true,
+        stockAlertAvailableThreshold: true,
+      },
+    });
+
+    res.status(200).json(buildStorePayload(updatedStore));
+  } catch (e) {
+    console.error("Update own store settings error:", e);
+    res.status(500).json({ error: "Erro ao salvar configurações da loja" });
   }
 });

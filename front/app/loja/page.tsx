@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Filter, Search, SlidersHorizontal, Store as StoreIcon } from "lucide-react"
+import { Filter, MessageCircle, Search, SlidersHorizontal, Store as StoreIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -23,6 +23,15 @@ import {
   type ProductFilterOptions,
 } from "@/components/product-filters-dialog"
 import { formatCurrency } from "@/lib/format"
+import {
+  classifyStockLevel,
+  getReadableTextColor,
+  normalizeWhatsappNumber,
+  resolveStockAlertColors,
+  resolveStockAlertThresholds,
+  type StockAlertColors,
+  type StockAlertThresholds,
+} from "@/lib/store-settings"
 import { PRODUCT_CATEGORY_LABELS, type ProductCategory } from "@/lib/types"
 import {
   getStorefrontBySlug,
@@ -31,6 +40,7 @@ import {
 } from "@/lib/storefront-api"
 
 type StoreSort = "relevance" | "name-asc" | "price-asc" | "price-desc" | "stock-desc"
+const DEFAULT_WHATSAPP_TEMPLATE = "Ola! Tenho interesse no produto {produto}. Pode me ajudar?"
 
 const CATEGORY_COLORS: Record<ProductCategory, string> = {
   roupas: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
@@ -171,18 +181,39 @@ function productSubtitle(product: StorefrontProduct): string {
   return parts.join(" | ")
 }
 
-function stockBadge(stock: number) {
-  if (stock === 0) {
-    return <Badge variant="destructive">Esgotado</Badge>
+function stockBadgeStyle(backgroundColor: string) {
+  return {
+    backgroundColor,
+    borderColor: backgroundColor,
+    color: getReadableTextColor(backgroundColor),
   }
-  if (stock <= 5) {
+}
+
+function stockBadge(
+  stock: number,
+  colors: StockAlertColors,
+  thresholds: StockAlertThresholds
+) {
+  const level = classifyStockLevel(stock, thresholds)
+  if (level === "out") {
     return (
-      <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-        Estoque baixo: {stock}
+      <Badge variant="secondary" style={stockBadgeStyle(colors.outOfStock)}>
+        Esgotado
       </Badge>
     )
   }
-  return <Badge variant="secondary">Disponivel: {stock}</Badge>
+  if (level === "low") {
+    return (
+      <Badge variant="secondary" style={stockBadgeStyle(colors.lowStock)}>
+        Estoque baixo: {stock} (ate {thresholds.lowStock})
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="secondary" style={stockBadgeStyle(colors.inStock)}>
+      Disponivel: {stock} (a partir de {thresholds.inStock})
+    </Badge>
+  )
 }
 
 function sizeStockSummary(product: StorefrontProduct): string | null {
@@ -200,6 +231,51 @@ function sizeStockSummary(product: StorefrontProduct): string | null {
 function truncateText(text: string, max = 110): string {
   if (text.length <= max) return text
   return `${text.slice(0, max).trimEnd()}...`
+}
+
+function applyMessageTemplate(
+  template: string,
+  replacements: Record<string, string>
+): string {
+  let output = template
+  for (const [marker, value] of Object.entries(replacements)) {
+    output = output.replaceAll(marker, value)
+  }
+  return output
+}
+
+function buildProductRequestMessage(params: {
+  template: string | null
+  storeName: string
+  product: StorefrontProduct
+  stock: number
+}): string {
+  const baseTemplate = (params.template ?? "").trim() || DEFAULT_WHATSAPP_TEMPLATE
+  const replacements = {
+    "{loja}": params.storeName,
+    "{produto}": params.product.name,
+    "{sku}": params.product.sku ?? "-",
+    "{preco}": formatCurrency(params.product.priceCents),
+    "{estoque}": String(params.stock),
+  }
+  const withMarkers = applyMessageTemplate(baseTemplate, replacements).trim()
+  const hasProductToken = /{produto}|{sku}|{preco}|{estoque}/i.test(baseTemplate)
+  if (hasProductToken) return withMarkers
+
+  const extraDetails = [
+    `Produto: ${params.product.name}`,
+    params.product.sku ? `SKU: ${params.product.sku}` : "",
+    `Preco: ${formatCurrency(params.product.priceCents)}`,
+    `Estoque: ${params.stock}`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  return [withMarkers, "", extraDetails].filter(Boolean).join("\n")
+}
+
+function buildWhatsappLink(whatsappNumber: string, message: string): string {
+  return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`
 }
 
 function sortProducts(
@@ -296,6 +372,33 @@ function LojaPublicaContent() {
   }, [slug, reloadTick])
 
   const products = storefront?.products ?? []
+  const whatsappNumber = useMemo(() => {
+    return normalizeWhatsappNumber(storefront?.store.onlineStoreWhatsappNumber ?? "")
+  }, [storefront?.store.onlineStoreWhatsappNumber])
+  const stockAlertColors = useMemo(
+    () =>
+      resolveStockAlertColors({
+        stockAlertLowColor: storefront?.store.stockAlertLowColor ?? null,
+        stockAlertOutColor: storefront?.store.stockAlertOutColor ?? null,
+        stockAlertOkColor: storefront?.store.stockAlertOkColor ?? null,
+      }),
+    [
+      storefront?.store.stockAlertLowColor,
+      storefront?.store.stockAlertOutColor,
+      storefront?.store.stockAlertOkColor,
+    ]
+  )
+  const stockAlertThresholds = useMemo(
+    () =>
+      resolveStockAlertThresholds({
+        stockAlertLowThreshold: storefront?.store.stockAlertLowThreshold ?? null,
+        stockAlertAvailableThreshold: storefront?.store.stockAlertAvailableThreshold ?? null,
+      }),
+    [
+      storefront?.store.stockAlertLowThreshold,
+      storefront?.store.stockAlertAvailableThreshold,
+    ]
+  )
 
   const filterOptions = useMemo(() => {
     return buildProductFilterOptions(products)
@@ -383,6 +486,7 @@ function LojaPublicaContent() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">{products.length} produtos cadastrados</Badge>
               <Badge variant="secondary">{totalStock} itens em estoque</Badge>
+              {whatsappNumber ? <Badge variant="secondary">Contato via WhatsApp ativo</Badge> : null}
             </div>
           </div>
         </header>
@@ -473,6 +577,15 @@ function LojaPublicaContent() {
                 const subtitle = productSubtitle(product)
                 const displayStock = getDisplayStock(product)
                 const sizeSummary = sizeStockSummary(product)
+                const requestMessage = buildProductRequestMessage({
+                  template: storefront.store.onlineStoreWhatsappMessage,
+                  storeName: storefront.store.name,
+                  product,
+                  stock: displayStock,
+                })
+                const whatsappLink = whatsappNumber
+                  ? buildWhatsappLink(whatsappNumber, requestMessage)
+                  : null
                 return (
                   <Card key={product.id} className="overflow-hidden">
                     <CardContent className="flex h-full flex-col p-0">
@@ -494,7 +607,9 @@ function LojaPublicaContent() {
                         >
                           {PRODUCT_CATEGORY_LABELS[product.category]}
                         </Badge>
-                        <div className="absolute right-3 top-3">{stockBadge(displayStock)}</div>
+                        <div className="absolute right-3 top-3">
+                          {stockBadge(displayStock, stockAlertColors, stockAlertThresholds)}
+                        </div>
                       </div>
 
                       <div className="flex flex-1 flex-col p-4">
@@ -533,6 +648,15 @@ function LojaPublicaContent() {
                             <p className="text-sm font-medium text-foreground">{displayStock}</p>
                           </div>
                         </div>
+
+                        {whatsappLink && (
+                          <Button asChild type="button" className="mt-4 gap-2" variant="outline">
+                            <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+                              <MessageCircle className="size-4" />
+                              Solicitar item
+                            </a>
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

@@ -80,6 +80,7 @@ export interface Sale {
   createdAt: string
   totalCents: number
   itemsCount: number
+  discountCents?: number
   payments: PaymentSplit[]
   customerName: string | null
   customerPhone: string | null
@@ -94,6 +95,7 @@ export interface SaleItem {
   qty: number
   unitPriceCents: number
   lineTotalCents: number
+  bonusQty?: number
 }
 
 export interface CartItem {

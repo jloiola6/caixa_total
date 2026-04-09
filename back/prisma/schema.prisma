@@ -159,6 +159,14 @@ model Store {
   slug                        String                       @unique
   offlineModeEnabled          Boolean                      @default(true)
   onlineStoreEnabled          Boolean                      @default(false)
+  onlineStoreWhatsappNumber   String?
+  onlineStoreWhatsappMessage  String?
+  financeModuleEnabled        Boolean                      @default(true)
+  stockAlertLowColor          String                       @default("#f59e0b")
+  stockAlertOutColor          String                       @default("#ef4444")
+  stockAlertOkColor           String                       @default("#22c55e")
+  stockAlertLowThreshold      Int                          @default(5)
+  stockAlertAvailableThreshold Int                         @default(6)
   createdAt                   DateTime                     @default(now())
   updatedAt                   DateTime                     @updatedAt
   users                       User[]
@@ -290,6 +298,7 @@ model Sale {
   createdAt         DateTime
   totalCents        Int
   itemsCount        Int
+  discountCents     Int            @default(0)
   customerName      String?
   customerPhone     String?
   updatedAt         DateTime       @default(now())
@@ -310,6 +319,7 @@ model SaleItem {
   qty            Int
   unitPriceCents Int
   lineTotalCents Int
+  bonusQty       Int     @default(0)
   sale           Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
 }
 

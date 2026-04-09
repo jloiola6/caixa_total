@@ -149,6 +149,55 @@ function normalizeProductId(productId: string): string {
   return productId.slice(0, splitIndex)
 }
 
+type BonusItemShape = {
+  qty: number
+  unitPriceCents: number
+  lineTotalCents: number
+  bonusQty?: number | null
+}
+
+type DiscountSaleShape = {
+  totalCents: number
+  discountCents?: number | null
+}
+
+function resolveBonusQty(item: BonusItemShape): number {
+  const explicitRaw = Number(item.bonusQty ?? 0)
+  if (Number.isFinite(explicitRaw) && explicitRaw > 0) {
+    return Math.min(item.qty, Math.max(0, Math.floor(explicitRaw)))
+  }
+
+  const unitPriceCents = Math.max(0, Math.floor(item.unitPriceCents))
+  const qty = Math.max(0, Math.floor(item.qty))
+  const lineTotalCents = Math.max(0, Math.floor(item.lineTotalCents))
+  const fullLineCents = unitPriceCents * qty
+  const reductionCents = fullLineCents - lineTotalCents
+
+  if (unitPriceCents <= 0 || reductionCents <= 0) return 0
+  if (reductionCents % unitPriceCents !== 0) return 0
+
+  const inferredQty = reductionCents / unitPriceCents
+  if (!Number.isInteger(inferredQty) || inferredQty <= 0) return 0
+  return Math.min(qty, inferredQty)
+}
+
+function resolveDiscountCents(
+  sale: DiscountSaleShape,
+  items: Array<{ lineTotalCents: number }>
+): number {
+  const explicitRaw = Number(sale.discountCents ?? 0)
+  if (Number.isFinite(explicitRaw) && explicitRaw > 0) {
+    return Math.max(0, Math.floor(explicitRaw))
+  }
+
+  const itemsTotalCents = items.reduce(
+    (sum, item) => sum + Math.max(0, Math.floor(item.lineTotalCents)),
+    0
+  )
+  const totalCents = Math.max(0, Math.floor(sale.totalCents))
+  return Math.max(0, itemsTotalCents - totalCents)
+}
+
 function parseMonthDate(monthValue: string): Date {
   const [yearRaw, monthRaw] = monthValue.split("-")
   const year = Number(yearRaw)
@@ -337,14 +386,20 @@ function RelatoriosContent() {
       getProducts().map((product) => [product.id, product.category] as const)
     )
 
-    const localSales: ReportSale[] = getSales(startISO, endISO).map((sale) => ({
-      ...sale,
-      items: getSaleItems(sale.id).map((item) => ({
+    const localSales: ReportSale[] = getSales(startISO, endISO).map((sale) => {
+      const normalizedItems: ReportSaleItem[] = getSaleItems(sale.id).map((item) => ({
         ...item,
+        bonusQty: resolveBonusQty(item),
         productCategory:
           categoryByProductId.get(normalizeProductId(item.productId)) ?? null,
-      })),
-    }))
+      }))
+
+      return {
+        ...sale,
+        discountCents: resolveDiscountCents(sale, normalizedItems),
+        items: normalizedItems,
+      }
+    })
 
     setSourceSales(localSales)
   }, [startISO, endISO])
@@ -366,19 +421,25 @@ function RelatoriosContent() {
 
     getReportSales(startISO, endISO)
       .then((salesRes) => {
-        const normalized: ReportSale[] = salesRes.map((sale) => ({
-          id: sale.id,
-          createdAt: sale.createdAt,
-          totalCents: sale.totalCents,
-          itemsCount: sale.itemsCount,
-          customerName: sale.customerName,
-          customerPhone: sale.customerPhone,
-          payments: sale.payments,
-          items: sale.items.map((item) => ({
+        const normalized: ReportSale[] = salesRes.map((sale) => {
+          const normalizedItems: ReportSaleItem[] = sale.items.map((item) => ({
             ...item,
+            bonusQty: resolveBonusQty(item),
             productCategory: item.productCategory ?? null,
-          })),
-        }))
+          }))
+
+          return {
+            id: sale.id,
+            createdAt: sale.createdAt,
+            totalCents: sale.totalCents,
+            itemsCount: sale.itemsCount,
+            discountCents: resolveDiscountCents(sale, normalizedItems),
+            customerName: sale.customerName,
+            customerPhone: sale.customerPhone,
+            payments: sale.payments,
+            items: normalizedItems,
+          }
+        })
 
         setSourceSales(normalized)
         setUseApi(true)
@@ -1106,7 +1167,19 @@ function RelatoriosContent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {salesData.map((sale) => (
+                  {salesData.map((sale) => {
+                    const discountCents = resolveDiscountCents(sale, sale.items)
+                    const bonusItemsCount = sale.items.reduce(
+                      (sum, item) => sum + resolveBonusQty(item),
+                      0
+                    )
+                    const bonusItemsValueCents = sale.items.reduce(
+                      (sum, item) => sum + item.unitPriceCents * resolveBonusQty(item),
+                      0
+                    )
+                    const subtotalBeforeDiscountCents = sale.totalCents + discountCents
+
+                    return (
                     <Fragment key={sale.id}>
                       <TableRow
                         id={`sale-row-${sale.id}`}
@@ -1173,7 +1246,19 @@ function RelatoriosContent() {
                           )}
                         </TableCell>
                         <TableCell className="text-right font-semibold">
-                          {formatCurrency(sale.totalCents)}
+                          <div className="flex flex-col items-end">
+                            <span>{formatCurrency(sale.totalCents)}</span>
+                            {(discountCents > 0 || bonusItemsCount > 0) && (
+                              <span className="text-xs font-normal text-muted-foreground">
+                                {[
+                                  discountCents > 0 ? `Desc. ${formatCurrency(discountCents)}` : null,
+                                  bonusItemsCount > 0 ? `Bonus ${bonusItemsCount} un.` : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" • ")}
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
 
@@ -1217,31 +1302,74 @@ function RelatoriosContent() {
                                 </div>
                               </div>
                               <div className="flex flex-col gap-1">
-                                {sale.items.map((item) => (
-                                  <div
-                                    key={item.id}
-                                    className="flex items-center justify-between text-sm"
-                                  >
-                                    <span className="text-foreground">
-                                      {item.qty}x {item.productName}
-                                      {item.sku && (
-                                        <span className="text-muted-foreground ml-1">
-                                          ({item.sku})
+                                {sale.items.map((item) => {
+                                  const itemBonusQty = resolveBonusQty(item)
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className="flex items-center justify-between text-sm"
+                                    >
+                                      <span className="text-foreground flex items-center gap-2">
+                                        <span>
+                                          {item.qty}x {item.productName}
+                                          {item.sku && (
+                                            <span className="text-muted-foreground ml-1">
+                                              ({item.sku})
+                                            </span>
+                                          )}
                                         </span>
-                                      )}
-                                    </span>
-                                    <span className="text-muted-foreground">
-                                      {formatCurrency(item.lineTotalCents)}
-                                    </span>
-                                  </div>
-                                ))}
+                                        {itemBonusQty > 0 && (
+                                          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                                            Bonus {itemBonusQty} un.
+                                          </Badge>
+                                        )}
+                                      </span>
+                                      <span className="text-muted-foreground">
+                                        {formatCurrency(item.lineTotalCents)}
+                                      </span>
+                                    </div>
+                                  )
+                                })}
                               </div>
+                              {(bonusItemsCount > 0 || discountCents > 0) && (
+                                <div className="mt-3 flex flex-col gap-1 border-t border-border/60 pt-2 text-xs">
+                                  {bonusItemsCount > 0 && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-muted-foreground">
+                                        Bonus concedido ({bonusItemsCount} un.)
+                                      </span>
+                                      <span className="font-medium text-foreground">
+                                        -{formatCurrency(bonusItemsValueCents)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center justify-between font-medium text-foreground">
+                                    <span>Subtotal antes do desconto geral</span>
+                                    <span>{formatCurrency(subtotalBeforeDiscountCents)}</span>
+                                  </div>
+                                  {discountCents > 0 && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-muted-foreground">
+                                        Desconto no total da venda
+                                      </span>
+                                      <span className="font-medium text-foreground">
+                                        -{formatCurrency(discountCents)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center justify-between text-sm font-semibold text-foreground">
+                                    <span>Total final</span>
+                                    <span>{formatCurrency(sale.totalCents)}</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
                       )}
                     </Fragment>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>

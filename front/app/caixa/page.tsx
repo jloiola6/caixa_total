@@ -248,7 +248,9 @@ export default function CaixaPage() {
     payments: PaymentSplit[],
     customerName: string | null,
     customerPhone: string | null,
-    lineTotalOverridesCents: Record<string, number>
+    lineTotalOverridesCents: Record<string, number>,
+    orderDiscountCents: number,
+    bonusQtyByProductId: Record<string, number>
   ) {
     const onlinePolicyCheck = await ensureOnlinePolicyAllowsWrite()
     if (!onlinePolicyCheck.allowed) {
@@ -262,6 +264,8 @@ export default function CaixaPage() {
       customerName,
       customerPhone,
       lineTotalOverridesCents,
+      orderDiscountCents,
+      bonusQtyByProductId,
     })
     if (!result) {
       toast.error("Erro ao registrar venda. Verifique estoque e pagamentos.")

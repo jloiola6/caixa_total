@@ -52,6 +52,7 @@ type SalePayload = {
   createdAt: string;
   totalCents: number;
   itemsCount: number;
+  discountCents?: number;
   payments: PaymentPayload[];
   customerName?: string | null;
   customerPhone?: string | null;
@@ -66,6 +67,7 @@ type SaleItemPayload = {
   qty: number;
   unitPriceCents: number;
   lineTotalCents: number;
+  bonusQty?: number;
 };
 
 type StockLogPayload = {
@@ -485,6 +487,10 @@ syncRouter.post("/", async (req, res) => {
     }
 
     for (const s of sales) {
+      const discountRaw = Number(s.discountCents ?? 0);
+      const discountCents = Number.isFinite(discountRaw)
+        ? Math.max(0, Math.floor(discountRaw))
+        : 0;
       await prisma.sale.upsert({
         where: { id: s.id },
         create: {
@@ -493,6 +499,7 @@ syncRouter.post("/", async (req, res) => {
           createdAt: new Date(s.createdAt),
           totalCents: s.totalCents,
           itemsCount: s.itemsCount,
+          discountCents,
           customerName: s.customerName ?? null,
           customerPhone: s.customerPhone ?? null,
           updatedAt: now,
@@ -501,6 +508,7 @@ syncRouter.post("/", async (req, res) => {
           createdAt: new Date(s.createdAt),
           totalCents: s.totalCents,
           itemsCount: s.itemsCount,
+          discountCents,
           customerName: s.customerName ?? null,
           customerPhone: s.customerPhone ?? null,
           updatedAt: now,
@@ -521,6 +529,10 @@ syncRouter.post("/", async (req, res) => {
     }
 
     for (const si of saleItems) {
+      const bonusQtyRaw = Number(si.bonusQty ?? 0);
+      const bonusQty = Number.isFinite(bonusQtyRaw)
+        ? Math.max(0, Math.floor(bonusQtyRaw))
+        : 0;
       await prisma.saleItem.upsert({
         where: { id: si.id },
         create: {
@@ -532,6 +544,7 @@ syncRouter.post("/", async (req, res) => {
           qty: si.qty,
           unitPriceCents: si.unitPriceCents,
           lineTotalCents: si.lineTotalCents,
+          bonusQty,
         },
         update: {
           saleId: si.saleId,
@@ -541,6 +554,7 @@ syncRouter.post("/", async (req, res) => {
           qty: si.qty,
           unitPriceCents: si.unitPriceCents,
           lineTotalCents: si.lineTotalCents,
+          bonusQty,
         },
       });
     }
@@ -680,6 +694,7 @@ syncRouter.get("/", async (req, res) => {
       createdAt: s.createdAt.toISOString(),
       totalCents: s.totalCents,
       itemsCount: s.itemsCount,
+      discountCents: s.discountCents,
       customerName: s.customerName,
       customerPhone: s.customerPhone,
       payments: s.payments.map((p) => ({ method: p.method, amountCents: p.amountCents })),

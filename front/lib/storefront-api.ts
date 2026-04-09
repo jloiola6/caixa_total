@@ -38,6 +38,13 @@ export type StorefrontResponse = {
     id: string
     name: string
     slug: string
+    onlineStoreWhatsappNumber: string | null
+    onlineStoreWhatsappMessage: string | null
+    stockAlertLowColor: string
+    stockAlertOutColor: string
+    stockAlertOkColor: string
+    stockAlertLowThreshold: number
+    stockAlertAvailableThreshold: number
   }
   products: StorefrontProduct[]
   generatedAt: string
