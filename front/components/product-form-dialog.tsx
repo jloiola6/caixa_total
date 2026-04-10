@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { CurrencyInput } from "@/components/currency-input"
+import { BarcodeScanner } from "@/components/barcode-scanner"
 import { upsertProduct, getAllBarcodes } from "@/lib/db"
 import { syncToServer } from "@/lib/sync"
 import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
@@ -27,6 +28,7 @@ import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import {
+  Camera,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -129,6 +131,7 @@ export function ProductFormDialog({
   const [clothingSizes, setClothingSizes] = useState<SizeStockRow[]>(() => [createSizeStockRow()])
   const [barcodeSvg, setBarcodeSvg] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState<FormStep>(0)
+  const [scannerOpen, setScannerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isEditing = !!product
@@ -248,11 +251,18 @@ export function ProductFormDialog({
   useEffect(() => {
     if (open) {
       setCurrentStep(0)
+      return
     }
+    setScannerOpen(false)
   }, [open, product?.id])
 
   function handleGenerateBarcode() {
     generateBarcodeForForm(true)
+  }
+
+  function handleBarcodeScanned(code: string) {
+    setBarcode(code)
+    setBarcodeSvg(code.length >= 4 ? renderBarcodeSvg(code) : null)
   }
 
   function validateStep(step: FormStep): boolean {
@@ -546,12 +556,13 @@ export function ProductFormDialog({
         : stock
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        showCloseButton={false}
-        className="w-[calc(100%-1rem)] sm:max-w-2xl p-0 gap-0 overflow-hidden max-h-[86svh] sm:max-h-[84svh]"
-      >
-        <form onSubmit={handleSubmit} className="flex min-h-[60svh] max-h-[86svh] sm:max-h-[84svh] flex-col">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          showCloseButton={false}
+          className="w-[calc(100%-1rem)] sm:max-w-2xl p-0 gap-0 overflow-hidden max-h-[86svh] sm:max-h-[84svh]"
+        >
+          <form onSubmit={handleSubmit} className="flex min-h-[60svh] max-h-[86svh] sm:max-h-[84svh] flex-col">
           <DialogHeader className="border-b px-4 py-4 sm:px-6 sm:py-5">
             <DialogTitle className="text-2xl sm:text-[34px] leading-tight">
               {isEditing ? "Editar Produto" : "Novo Produto"}
@@ -709,6 +720,15 @@ export function ProductFormDialog({
                         title="Gerar codigo aleatorio"
                       >
                         <Shuffle className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setScannerOpen(true)}
+                        title="Escanear codigo de barras"
+                      >
+                        <Camera className="size-4" />
                       </Button>
                     </div>
                   </div>
@@ -1102,8 +1122,15 @@ export function ProductFormDialog({
               </Button>
             )}
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <BarcodeScanner
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onScanned={handleBarcodeScanned}
+      />
+    </>
   )
 }
