@@ -159,6 +159,7 @@ model Store {
   slug                        String                       @unique
   offlineModeEnabled          Boolean                      @default(true)
   onlineStoreEnabled          Boolean                      @default(false)
+  mobileMenuShortcuts         String[]                     @default([])
   onlineStoreWhatsappNumber   String?
   onlineStoreWhatsappMessage  String?
   financeModuleEnabled        Boolean                      @default(true)

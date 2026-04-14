@@ -11,6 +11,26 @@ export function getApiUrl(path: string): string {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+export function isTransientFetchError(error: unknown): boolean {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    return error.name === "AbortError"
+  }
+
+  if (!(error instanceof Error)) return false
+
+  const message = error.message.toLowerCase()
+  const matchesFetchMessage =
+    message.includes("failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("networkerror") ||
+    message.includes("load failed") ||
+    message.includes("network request failed")
+
+  if (error.name === "TypeError") return matchesFetchMessage
+
+  return matchesFetchMessage
+}
+
 const TOKEN_KEY = "caixatotal_token";
 
 export function getAuthHeaders(includeJson = false): Record<string, string> {

@@ -139,6 +139,7 @@ function normalizePrintOptions(rawOptions) {
       localPrinterName: "",
       wifiHost: "",
       wifiPort: 9100,
+      cutAfterPrint: true,
     };
   }
 
@@ -151,8 +152,9 @@ function normalizePrintOptions(rawOptions) {
     typeof options.wifiPort === "number" && Number.isFinite(options.wifiPort)
       ? Math.max(1, Math.floor(options.wifiPort))
       : 9100;
+  const cutAfterPrint = options.cutAfterPrint !== false;
 
-  return { connectionType, localPrinterName, wifiHost, wifiPort };
+  return { connectionType, localPrinterName, wifiHost, wifiPort, cutAfterPrint };
 }
 
 async function listLocalPrinters() {
@@ -180,7 +182,21 @@ async function listLocalPrinters() {
   }
 }
 
-async function printTextOverWifi(text, host, port) {
+function appendCutCommand(payload) {
+  return Buffer.concat([
+    payload,
+    Buffer.from("\r\n\r\n\r\n", "utf8"),
+    Buffer.from([0x1d, 0x56, 0x00]),
+  ]);
+}
+
+function buildPrintPayload(text, cutAfterPrint) {
+  const normalizedText = text.replace(/\r?\n/g, "\r\n");
+  const basePayload = Buffer.from(normalizedText, "utf8");
+  return cutAfterPrint ? appendCutCommand(basePayload) : basePayload;
+}
+
+async function printTextOverWifi(payload, host, port) {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     let settled = false;
@@ -203,7 +219,6 @@ async function printTextOverWifi(text, host, port) {
     socket.once("timeout", () => finishError(new Error("Timeout na impressora Wi-Fi")));
     socket.once("error", (error) => finishError(error));
     socket.connect(port, host, () => {
-      const payload = Buffer.from(text.replace(/\r?\n/g, "\r\n"), "utf8");
       socket.write(payload, (writeError) => {
         if (writeError) {
           finishError(writeError);
@@ -414,13 +429,14 @@ async function printTextSilently(text, rawOptions) {
   }
 
   const options = normalizePrintOptions(rawOptions);
+  const payload = buildPrintPayload(text, options.cutAfterPrint);
 
   if (options.connectionType === "wifi") {
     if (!options.wifiHost) {
       return { ok: false, error: "Informe o IP/host da impressora Wi-Fi" };
     }
     try {
-      await printTextOverWifi(text, options.wifiHost, options.wifiPort);
+      await printTextOverWifi(payload, options.wifiHost, options.wifiPort);
       return { ok: true };
     } catch (error) {
       return {
@@ -434,8 +450,7 @@ async function printTextSilently(text, rawOptions) {
   try {
     tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), "caixatotal-print-"));
     const filePath = path.join(tempDir, "comprovante.txt");
-    const normalizedText = text.replace(/\r?\n/g, "\r\n");
-    await fsPromises.writeFile(filePath, normalizedText, { encoding: "utf8" });
+    await fsPromises.writeFile(filePath, payload);
 
     let printerName = options.localPrinterName || preferredPrinterName;
     if (!printerName) {

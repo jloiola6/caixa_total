@@ -7,6 +7,7 @@ type DesktopPrintOptions = {
   localPrinterName?: string
   wifiHost?: string
   wifiPort?: number
+  cutAfterPrint?: boolean
 }
 
 declare global {

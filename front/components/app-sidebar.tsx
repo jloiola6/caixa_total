@@ -5,16 +5,9 @@ import Link from "next/link"
 import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import {
-  ShoppingCart,
-  Package,
-  BarChart3,
   RefreshCw,
-  Shield,
   LogOut,
-  Bell,
   AlertTriangle,
-  Settings,
-  Landmark,
 } from "lucide-react"
 import {
   Sidebar,
@@ -33,27 +26,14 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { SyncModal } from "@/components/sync-modal"
 import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
-import { getUnreadNotificationsCount } from "@/lib/api"
+import { getUnreadNotificationsCount, isTransientFetchError } from "@/lib/api"
 import { getStoredStoreId } from "@/lib/auth-api"
 import { getStoredSyncConflictCount, SYNC_CONFLICT_STATUS_EVENT } from "@/lib/sync-conflict-status"
 import {
   getOfflineModeEnabledForCurrentStore,
   OFFLINE_MODE_CHANGED_EVENT,
 } from "@/lib/offline-mode"
-
-const storeUserNavItems = [
-  { title: "Caixa", href: "/caixa", icon: ShoppingCart },
-  { title: "Produtos", href: "/produtos", icon: Package },
-  { title: "Financeiro", href: "/financeiro", icon: Landmark },
-  { title: "Relatorios", href: "/relatorios", icon: BarChart3 },
-  { title: "Notificacoes", href: "/notificacoes", icon: Bell },
-  { title: "Configuracoes", href: "/configuracoes", icon: Settings },
-]
-
-const superAdminNavItems = [
-  { title: "Admin", href: "/admin", icon: Shield },
-  { title: "Configuracoes", href: "/configuracoes", icon: Settings },
-]
+import { getNavItemsForUser } from "@/components/app-navigation"
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -86,11 +66,19 @@ export function AppSidebar() {
         if (!cancelled) setUnreadNotifications(0)
         return
       }
+      if (typeof window !== "undefined" && !window.navigator.onLine) {
+        if (!cancelled) setUnreadNotifications(0)
+        return
+      }
       try {
         const storeId = getStoredStoreId() ?? undefined
         const unreadCount = await getUnreadNotificationsCount({ storeId })
         if (!cancelled) setUnreadNotifications(unreadCount)
       } catch (e) {
+        if (isTransientFetchError(e)) {
+          if (!cancelled) setUnreadNotifications(0)
+          return
+        }
         console.error("Falha ao carregar contador de notificacoes:", e)
       }
     }
@@ -143,12 +131,11 @@ export function AppSidebar() {
     }
   }
 
-  const storeNavItems =
-    user?.store?.financeModuleEnabled === false
-      ? storeUserNavItems.filter((item) => item.href !== "/financeiro")
-      : storeUserNavItems
+  const navItems = getNavItemsForUser(user)
 
-  const navItems = user?.role === "SUPER_ADMIN" ? superAdminNavItems : storeNavItems
+  if (isMobile) {
+    return null
+  }
 
   return (
     <Sidebar>

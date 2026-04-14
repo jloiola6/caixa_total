@@ -7,6 +7,8 @@ import {
   Plus,
   Minus,
   Trash2,
+  CheckCircle2,
+  Printer,
   ShoppingCart,
   X,
 } from "lucide-react"
@@ -43,7 +45,8 @@ import { formatCurrency } from "@/lib/format"
 import { syncToServer } from "@/lib/sync"
 import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import { printSaleReceipt } from "@/lib/sale-receipt"
-import type { Product, CartItem, PaymentSplit } from "@/lib/types"
+import type { ReceiptCopyType } from "@/lib/printer-settings"
+import type { Product, CartItem, PaymentSplit, Sale, SaleItem } from "@/lib/types"
 import { useAuth } from "@/contexts/auth-context"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcut"
 import { toast } from "sonner"
@@ -90,6 +93,10 @@ export default function CaixaPage() {
   const [sizePickerProduct, setSizePickerProduct] = useState<Product | null>(null)
   const [selectedSizeOptionId, setSelectedSizeOptionId] = useState("")
   const [lastSaleTotal, setLastSaleTotal] = useState(0)
+  const [lastCompletedSale, setLastCompletedSale] = useState<{
+    sale: Sale
+    saleItems: SaleItem[]
+  } | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const cartTotal = useMemo(
@@ -272,6 +279,10 @@ export default function CaixaPage() {
       return
     }
     setLastSaleTotal(result.sale.totalCents)
+    setLastCompletedSale({
+      sale: result.sale,
+      saleItems: result.saleItems,
+    })
     setCart([])
     setQuery("")
     setSearchResults([])
@@ -283,6 +294,7 @@ export default function CaixaPage() {
       saleItems: result.saleItems,
       operatorName: user?.name ?? null,
       storeName: user?.store?.name ?? null,
+      respectAutoPrint: true,
     })
     void printed.then((printResult) => {
       if (printResult.ok) return
@@ -296,6 +308,29 @@ export default function CaixaPage() {
     if (!syncResult.ok) {
       toast.error(syncResult.error ?? "Falha ao sincronizar com o servidor")
     }
+  }
+
+  function handleReprintLastSale(copyType: ReceiptCopyType) {
+    if (!lastCompletedSale) {
+      toast.error("Nenhuma venda recente disponivel para reimpressao")
+      return
+    }
+
+    void printSaleReceipt({
+      sale: lastCompletedSale.sale,
+      saleItems: lastCompletedSale.saleItems,
+      operatorName: user?.name ?? null,
+      storeName: user?.store?.name ?? null,
+      copies: [copyType],
+    }).then((result) => {
+      if (result.ok) return
+      toast.error(result.error || "Nao foi possivel reimprimir o comprovante")
+    })
+  }
+
+  function handleCloseSaleComplete() {
+    setSaleCompleteOpen(false)
+    searchInputRef.current?.focus()
   }
 
   function handleClearCart() {
@@ -381,7 +416,9 @@ export default function CaixaPage() {
         {/* Left: Search + Results */}
         <div
           className={`flex flex-col overflow-hidden border-border md:min-h-0 md:w-1/2 md:flex-1 md:border-r ${
-            cart.length > 0 ? "min-h-[12rem] max-h-[32svh] shrink-0" : "min-h-0 flex-1"
+            cart.length > 0
+              ? "min-h-[12rem] max-h-[32svh] shrink-0 md:max-h-none"
+              : "min-h-0 flex-1"
           }`}
         >
           {/* Search bar */}
@@ -709,27 +746,81 @@ export default function CaixaPage() {
       </AlertDialog>
 
       {/* Sale Complete Dialog */}
-      <Dialog open={saleCompleteOpen} onOpenChange={setSaleCompleteOpen}>
-        <DialogContent className="sm:max-w-sm text-center">
-          <DialogHeader>
-            <DialogTitle>Venda Registrada</DialogTitle>
+      <Dialog
+        open={saleCompleteOpen}
+        onOpenChange={(open) => {
+          setSaleCompleteOpen(open)
+          if (!open) {
+            searchInputRef.current?.focus()
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="items-center text-center">
+            <div className="mb-1 flex size-16 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-500">
+              <CheckCircle2 className="size-9" />
+            </div>
+            <DialogTitle className="text-2xl">Venda Registrada</DialogTitle>
             <DialogDescription>
-              A venda foi registrada com sucesso.
+              Pagamento concluido e venda salva com sucesso.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col items-center gap-2 py-4">
-            <div className="flex size-16 items-center justify-center rounded-full bg-primary/10">
-              <ShoppingCart className="size-8 text-primary" />
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-2xl border border-border bg-muted/30 p-5 text-center">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Total da venda
+              </p>
+              <p className="mt-2 text-4xl font-bold tracking-tight text-foreground">
+                {formatCurrency(lastSaleTotal)}
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <ShoppingCart className="size-3.5" />
+                <span>Comprovantes disponiveis para reimpressao abaixo</span>
+              </div>
             </div>
-            <p className="text-3xl font-bold text-foreground">
-              {formatCurrency(lastSaleTotal)}
-            </p>
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Reimprimir comprovante
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-14 justify-start rounded-xl px-4 py-3 text-left"
+                  onClick={() => handleReprintLastSale("seller")}
+                  disabled={!lastCompletedSale}
+                >
+                  <Printer className="mr-3 size-4 shrink-0" />
+                  <span className="flex flex-col">
+                    <span>Via vendedor</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Uso interno
+                    </span>
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-14 justify-start rounded-xl px-4 py-3 text-left"
+                  onClick={() => handleReprintLastSale("customer")}
+                  disabled={!lastCompletedSale}
+                >
+                  <Printer className="mr-3 size-4 shrink-0" />
+                  <span className="flex flex-col">
+                    <span>Via cliente</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Entrega ao cliente
+                    </span>
+                  </span>
+                </Button>
+              </div>
+            </div>
           </div>
-          <DialogFooter className="sm:justify-center">
-            <Button onClick={() => {
-              setSaleCompleteOpen(false)
-              searchInputRef.current?.focus()
-            }}>
+
+          <DialogFooter>
+            <Button className="w-full sm:w-full" onClick={handleCloseSaleComplete}>
               Nova Venda
             </Button>
           </DialogFooter>

@@ -89,6 +89,7 @@ import {
 } from "@/lib/db"
 import { cancelReportSale, getReportSales } from "@/lib/api"
 import { formatCurrency, formatDate, formatDateLabel } from "@/lib/format"
+import type { ReceiptCopyType } from "@/lib/printer-settings"
 import { printSaleReceipt } from "@/lib/sale-receipt"
 import {
   PAYMENT_METHOD_LABELS,
@@ -775,12 +776,13 @@ function RelatoriosContent() {
     setFiltersOpen(false)
   }
 
-  function handleReprintSale(sale: ReportSale) {
+  function handleReprintSale(sale: ReportSale, copyType: ReceiptCopyType) {
     void printSaleReceipt({
       sale,
       saleItems: sale.items,
       operatorName: user?.name ?? null,
       storeName: user?.store?.name ?? null,
+      copies: [copyType],
     }).then((result) => {
       if (result.ok) return
       toast.error(result.error || "Nao foi possivel reimprimir o comprovante")
@@ -1276,10 +1278,20 @@ function RelatoriosContent() {
                                     size="sm"
                                     variant="outline"
                                     className="h-7 text-xs"
-                                    onClick={() => handleReprintSale(sale)}
+                                    onClick={() => handleReprintSale(sale, "seller")}
                                   >
                                     <Printer className="mr-1 size-3" />
-                                    Reimprimir comprovante
+                                    Via vendedor
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    onClick={() => handleReprintSale(sale, "customer")}
+                                  >
+                                    <Printer className="mr-1 size-3" />
+                                    Via cliente
                                   </Button>
                                   {!readOnly && (
                                     <Button

@@ -1,24 +1,31 @@
 import { getStoredStoreId } from "@/lib/auth-api"
 
 export type PrinterConnectionType = "local" | "wifi"
+export type ReceiptCopyType = "seller" | "customer"
 
 export type PrinterSettings = {
-  enabled: boolean
+  autoPrintEnabled: boolean
   connectionType: PrinterConnectionType
   localPrinterName: string
   wifiHost: string
   wifiPort: number
+  printSellerCopy: boolean
+  printCustomerCopy: boolean
+  cutAfterEachCopy: boolean
   headerText: string
   footerText: string
   updatedAt: string | null
 }
 
 const DEFAULT_PRINTER_SETTINGS: PrinterSettings = {
-  enabled: false,
+  autoPrintEnabled: false,
   connectionType: "local",
   localPrinterName: "",
   wifiHost: "",
   wifiPort: 9100,
+  printSellerCopy: true,
+  printCustomerCopy: true,
+  cutAfterEachCopy: true,
   headerText: "",
   footerText: "",
   updatedAt: null,
@@ -43,7 +50,7 @@ function getSettingsStorageKey(): string {
 
 function normalizePrinterSettings(value: unknown): PrinterSettings {
   if (!value || typeof value !== "object") return { ...DEFAULT_PRINTER_SETTINGS }
-  const maybe = value as Partial<PrinterSettings>
+  const maybe = value as Partial<PrinterSettings> & { enabled?: unknown }
   const connectionType: PrinterConnectionType =
     maybe.connectionType === "wifi" ? "wifi" : "local"
   const wifiPort =
@@ -52,12 +59,27 @@ function normalizePrinterSettings(value: unknown): PrinterSettings {
       : 9100
 
   return {
-    enabled: Boolean(maybe.enabled),
+    autoPrintEnabled:
+      typeof maybe.autoPrintEnabled === "boolean"
+        ? maybe.autoPrintEnabled
+        : Boolean(maybe.enabled),
     connectionType,
     localPrinterName:
       typeof maybe.localPrinterName === "string" ? maybe.localPrinterName.trim() : "",
     wifiHost: typeof maybe.wifiHost === "string" ? maybe.wifiHost.trim() : "",
     wifiPort,
+    printSellerCopy:
+      typeof maybe.printSellerCopy === "boolean"
+        ? maybe.printSellerCopy
+        : DEFAULT_PRINTER_SETTINGS.printSellerCopy,
+    printCustomerCopy:
+      typeof maybe.printCustomerCopy === "boolean"
+        ? maybe.printCustomerCopy
+        : DEFAULT_PRINTER_SETTINGS.printCustomerCopy,
+    cutAfterEachCopy:
+      typeof maybe.cutAfterEachCopy === "boolean"
+        ? maybe.cutAfterEachCopy
+        : DEFAULT_PRINTER_SETTINGS.cutAfterEachCopy,
     headerText: normalizeReceiptCustomText(maybe.headerText),
     footerText: normalizeReceiptCustomText(maybe.footerText),
     updatedAt:

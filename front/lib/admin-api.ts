@@ -7,6 +7,7 @@ export type Store = {
   offlineModeEnabled: boolean;
   onlineStoreEnabled: boolean;
   financeModuleEnabled: boolean;
+  mobileMenuShortcuts: string[];
   onlineStoreWhatsappNumber: string | null;
   onlineStoreWhatsappMessage: string | null;
   stockAlertLowColor: string;
@@ -41,6 +42,7 @@ export async function createStore(
     offlineModeEnabled?: boolean;
     onlineStoreEnabled?: boolean;
     financeModuleEnabled?: boolean;
+    mobileMenuShortcuts?: string[];
     onlineStoreWhatsappNumber?: string | null;
     onlineStoreWhatsappMessage?: string | null;
     stockAlertLowColor?: string;
@@ -68,6 +70,7 @@ export async function updateStore(
     offlineModeEnabled?: boolean;
     onlineStoreEnabled?: boolean;
     financeModuleEnabled?: boolean;
+    mobileMenuShortcuts?: string[];
     onlineStoreWhatsappNumber?: string | null;
     onlineStoreWhatsappMessage?: string | null;
     stockAlertLowColor?: string;

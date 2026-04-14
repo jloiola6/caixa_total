@@ -1,22 +1,31 @@
 import type { Sale, SaleItem } from "@/lib/types"
 import { PAYMENT_METHOD_LABELS } from "@/lib/types"
-import { getPrinterSettings, type PrinterSettings } from "@/lib/printer-settings"
+import {
+  getPrinterSettings,
+  type PrinterSettings,
+  type ReceiptCopyType,
+} from "@/lib/printer-settings"
 
 type PrintSaleReceiptInput = {
   sale: Sale
   saleItems: SaleItem[]
   operatorName?: string | null
   storeName?: string | null
+  copies?: ReceiptCopyType[]
+  respectAutoPrint?: boolean
 }
 
 type PrintSaleReceiptResult = {
   ok: boolean
-  mode: "desktop-silent-text" | "desktop-silent" | "browser-dialog"
+  mode: "desktop-silent-text" | "desktop-silent" | "browser-dialog" | "skipped"
+  printedCopies: ReceiptCopyType[]
+  skipped?: boolean
   error?: string
 }
 
 type BuildReceiptHtmlOptions = {
   includePrintScript: boolean
+  copyType: ReceiptCopyType
 }
 
 type ReceiptCustomContent = {
@@ -29,6 +38,10 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
 })
 const RECEIPT_WIDTH = 48
+const RECEIPT_COPY_LABELS: Record<ReceiptCopyType, string> = {
+  seller: "VIA DO VENDEDOR",
+  customer: "VIA DO CLIENTE",
+}
 
 function formatCurrency(cents: number): string {
   return CURRENCY_FORMATTER.format(cents / 100)
@@ -247,6 +260,7 @@ function buildReceiptHtml(
   const subtotalCents = sale.totalCents + discountCents
   const { bonusItemsCount, bonusItemsValueCents } = getBonusSummary(saleItems)
   const safeTitle = escapeHtml(title)
+  const copyLabel = RECEIPT_COPY_LABELS[options.copyType]
   const headerBlock =
     customContent.headerLines.length > 0
       ? `<div class="center small custom-text">${customContent.headerLines
@@ -320,6 +334,7 @@ function buildReceiptHtml(
         <div class="center">
           <div class="title">${safeTitle}</div>
           <div>COMPROVANTE DE VENDA</div>
+          <div class="small">${copyLabel}</div>
         </div>
         ${headerBlock}
 
@@ -385,7 +400,11 @@ function buildReceiptHtml(
   `
 }
 
-function buildReceiptText(input: PrintSaleReceiptInput, customContent: ReceiptCustomContent): string {
+function buildReceiptText(
+  input: PrintSaleReceiptInput,
+  customContent: ReceiptCustomContent,
+  copyType: ReceiptCopyType
+): string {
   const { sale, saleItems, operatorName, storeName } = input
   const title = sanitizeText(storeName?.trim() || "CaixaTotal")
   const customerName = sanitizeText(sale.customerName?.trim() || "-")
@@ -397,10 +416,12 @@ function buildReceiptText(input: PrintSaleReceiptInput, customContent: ReceiptCu
   const subtotalCents = sale.totalCents + discountCents
   const { bonusItemsCount, bonusItemsValueCents } = getBonusSummary(saleItems)
   const divider = "-".repeat(RECEIPT_WIDTH)
+  const copyLabel = RECEIPT_COPY_LABELS[copyType]
 
   const lines: string[] = []
   lines.push(centerText(title, RECEIPT_WIDTH))
   lines.push(centerText("COMPROVANTE DE VENDA", RECEIPT_WIDTH))
+  lines.push(centerText(copyLabel, RECEIPT_WIDTH))
   for (const headerLine of customContent.headerLines) {
     for (const wrapped of wrapText(headerLine, RECEIPT_WIDTH)) {
       lines.push(centerText(wrapped, RECEIPT_WIDTH))
@@ -488,26 +509,27 @@ async function tryDesktopTextSilentPrint(
   if (typeof window === "undefined") return null
   if (!window.caixaDesktop?.printTextSilently) return null
 
-  const printOptions = printerSettings.enabled
-    ? {
-        connectionType: printerSettings.connectionType,
-        localPrinterName: printerSettings.localPrinterName || undefined,
-        wifiHost: printerSettings.wifiHost || undefined,
-        wifiPort: printerSettings.wifiPort || undefined,
-      }
-    : undefined
+  const printOptions = {
+    connectionType: printerSettings.connectionType,
+    localPrinterName: printerSettings.localPrinterName || undefined,
+    wifiHost: printerSettings.wifiHost || undefined,
+    wifiPort: printerSettings.wifiPort || undefined,
+    cutAfterPrint: printerSettings.cutAfterEachCopy,
+  }
 
   try {
     const result = await window.caixaDesktop.printTextSilently(text, printOptions)
     return {
       ok: Boolean(result?.ok),
       mode: "desktop-silent-text",
+      printedCopies: [],
       error: result?.error,
     }
   } catch (error) {
     return {
       ok: false,
       mode: "desktop-silent-text",
+      printedCopies: [],
       error: error instanceof Error ? error.message : "Falha na impressao silenciosa",
     }
   }
@@ -518,6 +540,7 @@ function openBrowserPrintDialog(html: string): PrintSaleReceiptResult {
     return {
       ok: false,
       mode: "browser-dialog",
+      printedCopies: [],
       error: "Ambiente sem janela de navegador",
     }
   }
@@ -526,13 +549,14 @@ function openBrowserPrintDialog(html: string): PrintSaleReceiptResult {
     return {
       ok: false,
       mode: "browser-dialog",
+      printedCopies: [],
       error: "Nao foi possivel abrir a janela de impressao",
     }
   }
 
   printWindow.document.write(html)
   printWindow.document.close()
-  return { ok: true, mode: "browser-dialog" }
+  return { ok: true, mode: "browser-dialog", printedCopies: [] }
 }
 
 function isLikelyElectronRuntime(): boolean {
@@ -540,22 +564,100 @@ function isLikelyElectronRuntime(): boolean {
   return navigator.userAgent.toLowerCase().includes("electron")
 }
 
+function uniqueReceiptCopies(copies: ReceiptCopyType[]): ReceiptCopyType[] {
+  return copies.filter((copy, index) => copies.indexOf(copy) === index)
+}
+
+function resolveReceiptCopies(
+  input: PrintSaleReceiptInput,
+  printerSettings: PrinterSettings
+): ReceiptCopyType[] {
+  if (input.copies && input.copies.length > 0) {
+    return uniqueReceiptCopies(input.copies)
+  }
+
+  if (input.respectAutoPrint) {
+    if (!printerSettings.autoPrintEnabled) return []
+
+    const automaticCopies: ReceiptCopyType[] = []
+    if (printerSettings.printSellerCopy) automaticCopies.push("seller")
+    if (printerSettings.printCustomerCopy) automaticCopies.push("customer")
+    return automaticCopies
+  }
+
+  return ["seller"]
+}
+
+function formatCopyError(copyType: ReceiptCopyType, error: string | undefined): string {
+  const baseMessage = error || "Nao foi possivel imprimir o comprovante"
+  return `Falha ao imprimir ${RECEIPT_COPY_LABELS[copyType].toLowerCase()}: ${baseMessage}`
+}
+
 export async function printSaleReceipt(
   input: PrintSaleReceiptInput
 ): Promise<PrintSaleReceiptResult> {
   const printerSettings = getPrinterSettings()
-  const customContent = buildReceiptCustomContent(printerSettings)
-  const desktopText = buildReceiptText(input, customContent)
-  const browserHtml = buildReceiptHtml(input, { includePrintScript: true }, customContent)
-  const desktopResult = await tryDesktopTextSilentPrint(desktopText, printerSettings)
-  if (desktopResult) return desktopResult
-  if (isLikelyElectronRuntime()) {
+  const copies = resolveReceiptCopies(input, printerSettings)
+  if (copies.length === 0) {
     return {
-      ok: false,
-      mode: "desktop-silent-text",
-      error:
-        "Integracao de impressao em texto indisponivel. Reinicie o app desktop para carregar a bridge.",
+      ok: true,
+      mode: "skipped",
+      printedCopies: [],
+      skipped: true,
     }
   }
-  return openBrowserPrintDialog(browserHtml)
+
+  const customContent = buildReceiptCustomContent(printerSettings)
+
+  const printedCopies: ReceiptCopyType[] = []
+  let lastMode: PrintSaleReceiptResult["mode"] = "desktop-silent-text"
+
+  for (const copyType of copies) {
+    const desktopText = buildReceiptText(input, customContent, copyType)
+    const browserHtml = buildReceiptHtml(
+      input,
+      { includePrintScript: true, copyType },
+      customContent
+    )
+    const desktopResult = await tryDesktopTextSilentPrint(desktopText, printerSettings)
+    if (desktopResult) {
+      lastMode = desktopResult.mode
+      if (!desktopResult.ok) {
+        return {
+          ...desktopResult,
+          printedCopies,
+          error: formatCopyError(copyType, desktopResult.error),
+        }
+      }
+      printedCopies.push(copyType)
+      continue
+    }
+
+    if (isLikelyElectronRuntime()) {
+      return {
+        ok: false,
+        mode: "desktop-silent-text",
+        printedCopies,
+        error:
+          "Integracao de impressao em texto indisponivel. Reinicie o app desktop para carregar a bridge.",
+      }
+    }
+
+    const browserResult = openBrowserPrintDialog(browserHtml)
+    lastMode = browserResult.mode
+    if (!browserResult.ok) {
+      return {
+        ...browserResult,
+        printedCopies,
+        error: formatCopyError(copyType, browserResult.error),
+      }
+    }
+    printedCopies.push(copyType)
+  }
+
+  return {
+    ok: true,
+    mode: lastMode,
+    printedCopies,
+  }
 }

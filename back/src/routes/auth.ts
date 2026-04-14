@@ -6,6 +6,7 @@ import { prisma } from "../db.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { Resend } from "resend";
 import { config } from "../config.js";
+import { sanitizeStoreMobileMenuShortcuts } from "../lib/mobile-menu.js";
 
 export const authRouter = Router();
 
@@ -19,6 +20,36 @@ const DEFAULT_STOCK_ALERT_OUT_COLOR = "#ef4444";
 const DEFAULT_STOCK_ALERT_OK_COLOR = "#22c55e";
 const DEFAULT_STOCK_ALERT_LOW_THRESHOLD = 5;
 const DEFAULT_STOCK_ALERT_AVAILABLE_THRESHOLD = 6;
+const STORE_PAYLOAD_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  offlineModeEnabled: true,
+  onlineStoreEnabled: true,
+  financeModuleEnabled: true,
+  mobileMenuShortcuts: true,
+  onlineStoreWhatsappNumber: true,
+  onlineStoreWhatsappMessage: true,
+  stockAlertLowColor: true,
+  stockAlertOutColor: true,
+  stockAlertOkColor: true,
+  stockAlertLowThreshold: true,
+  stockAlertAvailableThreshold: true,
+} as const;
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  storeId: true,
+  store: {
+    select: STORE_PAYLOAD_SELECT,
+  },
+} as const;
+const LOGIN_USER_SELECT = {
+  ...AUTH_USER_SELECT,
+  passwordHash: true,
+} as const;
 
 function normalizeOptionalWhatsappNumber(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -55,6 +86,7 @@ function buildStorePayload(
     offlineModeEnabled: boolean;
     onlineStoreEnabled: boolean;
     financeModuleEnabled: boolean;
+    mobileMenuShortcuts: string[];
     onlineStoreWhatsappNumber: string | null;
     onlineStoreWhatsappMessage: string | null;
     stockAlertLowColor: string;
@@ -72,6 +104,7 @@ function buildStorePayload(
     offlineModeEnabled: store.offlineModeEnabled,
     onlineStoreEnabled: store.onlineStoreEnabled,
     financeModuleEnabled: store.financeModuleEnabled,
+    mobileMenuShortcuts: store.mobileMenuShortcuts,
     onlineStoreWhatsappNumber: store.onlineStoreWhatsappNumber,
     onlineStoreWhatsappMessage: store.onlineStoreWhatsappMessage,
     stockAlertLowColor: store.stockAlertLowColor,
@@ -91,7 +124,7 @@ authRouter.post("/login", async (req, res) => {
     }
     const user = await prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
-      include: { store: true },
+      select: LOGIN_USER_SELECT,
     });
     if (!user) {
       res.status(401).json({ error: "Credenciais inválidas" });
@@ -202,7 +235,7 @@ authRouter.get("/me", authMiddleware, async (req, res) => {
     }
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
-      select: { id: true, email: true, name: true, role: true, storeId: true, store: true },
+      select: AUTH_USER_SELECT,
     });
     if (!user) {
       res.status(401).json({ error: "Usuário não encontrado" });
@@ -236,6 +269,7 @@ authRouter.patch("/me/store-settings", authMiddleware, async (req, res) => {
     const {
       onlineStoreWhatsappNumber,
       onlineStoreWhatsappMessage,
+      mobileMenuShortcuts,
       stockAlertLowColor,
       stockAlertOutColor,
       stockAlertOkColor,
@@ -244,6 +278,7 @@ authRouter.patch("/me/store-settings", authMiddleware, async (req, res) => {
     } = req.body as {
       onlineStoreWhatsappNumber?: string | null;
       onlineStoreWhatsappMessage?: string | null;
+      mobileMenuShortcuts?: string[];
       stockAlertLowColor?: string;
       stockAlertOutColor?: string;
       stockAlertOkColor?: string;
@@ -254,6 +289,7 @@ authRouter.patch("/me/store-settings", authMiddleware, async (req, res) => {
     const data: {
       onlineStoreWhatsappNumber?: string | null;
       onlineStoreWhatsappMessage?: string | null;
+      mobileMenuShortcuts?: string[];
       stockAlertLowColor?: string;
       stockAlertOutColor?: string;
       stockAlertOkColor?: string;
@@ -281,6 +317,16 @@ authRouter.patch("/me/store-settings", authMiddleware, async (req, res) => {
         return;
       }
       data.onlineStoreWhatsappMessage = normalizeOptionalMessage(onlineStoreWhatsappMessage);
+    }
+
+    if (mobileMenuShortcuts !== undefined) {
+      if (
+        !Array.isArray(mobileMenuShortcuts) ||
+        mobileMenuShortcuts.some((value) => typeof value !== "string")
+      ) {
+        res.status(400).json({ error: "Atalhos do menu mobile invÃ¡lidos" });
+        return;
+      }
     }
 
     if (stockAlertLowColor !== undefined) {
@@ -364,12 +410,14 @@ authRouter.patch("/me/store-settings", authMiddleware, async (req, res) => {
     }
 
     if (
+      mobileMenuShortcuts !== undefined ||
       data.stockAlertLowThreshold !== undefined ||
       data.stockAlertAvailableThreshold !== undefined
     ) {
       const currentStore = await prisma.store.findUnique({
         where: { id: req.user.storeId },
         select: {
+          financeModuleEnabled: true,
           stockAlertLowThreshold: true,
           stockAlertAvailableThreshold: true,
         },
@@ -382,6 +430,12 @@ authRouter.patch("/me/store-settings", authMiddleware, async (req, res) => {
         data.stockAlertLowThreshold ?? currentStore.stockAlertLowThreshold;
       const availableThreshold =
         data.stockAlertAvailableThreshold ?? currentStore.stockAlertAvailableThreshold;
+      if (mobileMenuShortcuts !== undefined) {
+        data.mobileMenuShortcuts = sanitizeStoreMobileMenuShortcuts(
+          mobileMenuShortcuts,
+          currentStore.financeModuleEnabled
+        );
+      }
       if (availableThreshold <= lowThreshold) {
         res.status(400).json({
           error: "O valor de estoque disponível deve ser maior que o estoque baixo",
@@ -395,24 +449,28 @@ authRouter.patch("/me/store-settings", authMiddleware, async (req, res) => {
       return;
     }
 
+    if (
+      mobileMenuShortcuts !== undefined &&
+      data.mobileMenuShortcuts === undefined
+    ) {
+      const currentStore = await prisma.store.findUnique({
+        where: { id: req.user.storeId },
+        select: { financeModuleEnabled: true },
+      });
+      if (!currentStore) {
+        res.status(404).json({ error: "Loja nÃ£o encontrada" });
+        return;
+      }
+      data.mobileMenuShortcuts = sanitizeStoreMobileMenuShortcuts(
+        mobileMenuShortcuts,
+        currentStore.financeModuleEnabled
+      );
+    }
+
     const updatedStore = await prisma.store.update({
       where: { id: req.user.storeId },
       data,
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        offlineModeEnabled: true,
-        onlineStoreEnabled: true,
-        financeModuleEnabled: true,
-        onlineStoreWhatsappNumber: true,
-        onlineStoreWhatsappMessage: true,
-        stockAlertLowColor: true,
-        stockAlertOutColor: true,
-        stockAlertOkColor: true,
-        stockAlertLowThreshold: true,
-        stockAlertAvailableThreshold: true,
-      },
+      select: STORE_PAYLOAD_SELECT,
     });
 
     res.status(200).json(buildStorePayload(updatedStore));

@@ -41,6 +41,7 @@ export type AuthUser = {
     offlineModeEnabled?: boolean;
     onlineStoreEnabled?: boolean;
     financeModuleEnabled?: boolean;
+    mobileMenuShortcuts?: string[];
     onlineStoreWhatsappNumber?: string | null;
     onlineStoreWhatsappMessage?: string | null;
     stockAlertLowColor?: string;
@@ -118,6 +119,7 @@ export async function getMe(): Promise<AuthUser | null> {
   const token = getStoredToken();
   if (!token) return null;
   const res = await fetch(getApiUrl("/auth/me"), {
+    cache: "no-store",
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return null;
@@ -127,6 +129,7 @@ export async function getMe(): Promise<AuthUser | null> {
 export async function updateMyStoreSettings(data: {
   onlineStoreWhatsappNumber?: string | null;
   onlineStoreWhatsappMessage?: string | null;
+  mobileMenuShortcuts?: string[];
   stockAlertLowColor?: string;
   stockAlertOutColor?: string;
   stockAlertOkColor?: string;

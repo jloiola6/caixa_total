@@ -1,11 +1,10 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { MobileMenubar } from "@/components/mobile-menubar";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -63,20 +62,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       <AppSidebar />
       <SidebarInset>
         <OfflineIndicator />
-        <header className="flex h-12 items-center gap-2 px-4 md:hidden">
-          <SidebarTrigger />
-          <Link href="/" className="inline-flex items-center">
-            <Image
-              src="/caixa-total-logo.png"
-              alt="Logo Caixa Total"
-              width={768}
-              height={512}
-              className="h-8 w-auto rounded-sm"
-              priority
-            />
-          </Link>
-        </header>
-        <div className="flex-1 overflow-auto">{children}</div>
+        <div className="flex-1 overflow-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0">
+          {children}
+        </div>
+        <MobileMenubar />
       </SidebarInset>
     </SidebarProvider>
   );

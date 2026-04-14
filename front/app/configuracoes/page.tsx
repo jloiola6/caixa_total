@@ -1,8 +1,20 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2, CloudOff, ExternalLink, Store } from "lucide-react"
+import {
+  RefreshCw,
+  Save,
+  Printer,
+  Wifi,
+  Cable,
+  TestTube2,
+  CloudOff,
+  ExternalLink,
+  Smartphone,
+  Store,
+} from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -16,6 +28,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
+import {
+  MOBILE_MENU_SHORTCUT_LIMIT,
+  getStoreUserNavItems,
+  resolveMobileMenuShortcuts,
+  sanitizeMobileMenuShortcuts,
+} from "@/components/app-navigation"
 import { getStores, updateStore, type Store as AdminStore } from "@/lib/admin-api"
 import { updateMyStoreSettings } from "@/lib/auth-api"
 import type { Sale, SaleItem } from "@/lib/types"
@@ -45,13 +63,16 @@ function parseThresholdInput(value: string): number | null {
 }
 
 export default function ConfiguracoesPage() {
-  const { user, refreshUser } = useAuth()
+  const { user, applyStoreSettings, refreshUser } = useAuth()
 
-  const [enabled, setEnabled] = useState(false)
+  const [autoPrintEnabled, setAutoPrintEnabled] = useState(false)
   const [connectionType, setConnectionType] = useState<"local" | "wifi">("local")
   const [localPrinterName, setLocalPrinterName] = useState("")
   const [wifiHost, setWifiHost] = useState("")
   const [wifiPort, setWifiPort] = useState("9100")
+  const [printSellerCopy, setPrintSellerCopy] = useState(true)
+  const [printCustomerCopy, setPrintCustomerCopy] = useState(true)
+  const [cutAfterEachCopy, setCutAfterEachCopy] = useState(true)
   const [headerText, setHeaderText] = useState("")
   const [footerText, setFooterText] = useState("")
 
@@ -69,6 +90,7 @@ export default function ConfiguracoesPage() {
   const [myStoreSaving, setMyStoreSaving] = useState(false)
   const [myStoreWhatsappNumber, setMyStoreWhatsappNumber] = useState("")
   const [myStoreWhatsappMessage, setMyStoreWhatsappMessage] = useState("")
+  const [myMobileMenuShortcuts, setMyMobileMenuShortcuts] = useState<string[]>([])
   const [myStockAlertLowColor, setMyStockAlertLowColor] = useState(DEFAULT_STOCK_ALERT_COLORS.lowStock)
   const [myStockAlertOutColor, setMyStockAlertOutColor] = useState(DEFAULT_STOCK_ALERT_COLORS.outOfStock)
   const [myStockAlertOkColor, setMyStockAlertOkColor] = useState(DEFAULT_STOCK_ALERT_COLORS.inStock)
@@ -81,14 +103,21 @@ export default function ConfiguracoesPage() {
 
   const isDesktop = typeof window !== "undefined" && Boolean(window.caixaDesktop)
   const isSuperAdmin = user?.role === "SUPER_ADMIN"
+  const storeMobileNavItems = useMemo(
+    () => getStoreUserNavItems(user?.store?.financeModuleEnabled !== false),
+    [user?.store?.financeModuleEnabled]
+  )
 
   useEffect(() => {
     const settings = getPrinterSettings()
-    setEnabled(settings.enabled)
+    setAutoPrintEnabled(settings.autoPrintEnabled)
     setConnectionType(settings.connectionType)
     setLocalPrinterName(settings.localPrinterName)
     setWifiHost(settings.wifiHost)
     setWifiPort(String(settings.wifiPort || 9100))
+    setPrintSellerCopy(settings.printSellerCopy)
+    setPrintCustomerCopy(settings.printCustomerCopy)
+    setCutAfterEachCopy(settings.cutAfterEachCopy)
     setHeaderText(settings.headerText || "")
     setFooterText(settings.footerText || "")
   }, [])
@@ -163,6 +192,9 @@ export default function ConfiguracoesPage() {
 
     setMyStoreWhatsappNumber(store.onlineStoreWhatsappNumber ?? "")
     setMyStoreWhatsappMessage(store.onlineStoreWhatsappMessage ?? "")
+    setMyMobileMenuShortcuts(
+      resolveMobileMenuShortcuts(store.mobileMenuShortcuts, storeMobileNavItems)
+    )
     setMyStockAlertLowColor(
       normalizeHexColor(store.stockAlertLowColor, DEFAULT_STOCK_ALERT_COLORS.lowStock)
     )
@@ -178,12 +210,24 @@ export default function ConfiguracoesPage() {
     isSuperAdmin,
     user?.store?.onlineStoreWhatsappNumber,
     user?.store?.onlineStoreWhatsappMessage,
+    user?.store?.mobileMenuShortcuts,
     user?.store?.stockAlertLowColor,
     user?.store?.stockAlertOutColor,
     user?.store?.stockAlertOkColor,
     user?.store?.stockAlertLowThreshold,
     user?.store?.stockAlertAvailableThreshold,
+    storeMobileNavItems,
   ])
+
+  const effectiveMobileMenuShortcuts = useMemo(
+    () => resolveMobileMenuShortcuts(myMobileMenuShortcuts, storeMobileNavItems),
+    [myMobileMenuShortcuts, storeMobileNavItems]
+  )
+
+  const effectiveMobileMenuItems = useMemo(() => {
+    const selected = new Set(effectiveMobileMenuShortcuts)
+    return storeMobileNavItems.filter((item) => selected.has(item.href))
+  }, [effectiveMobileMenuShortcuts, storeMobileNavItems])
 
   const selectedStorefrontPath = useMemo(() => {
     if (!selectedStore) return ""
@@ -196,7 +240,10 @@ export default function ConfiguracoesPage() {
   }, [user?.store?.slug])
 
   const validationError = useMemo(() => {
-    if (!enabled) return null
+    if (!autoPrintEnabled) return null
+    if (!printSellerCopy && !printCustomerCopy) {
+      return "Selecione ao menos uma via para a impressao automatica."
+    }
     if (connectionType === "local") {
       if (!localPrinterName.trim()) {
         return "Selecione uma impressora local para continuar."
@@ -211,7 +258,15 @@ export default function ConfiguracoesPage() {
       return "Informe uma porta valida (1-65535)."
     }
     return null
-  }, [enabled, connectionType, localPrinterName, wifiHost, wifiPort])
+  }, [
+    autoPrintEnabled,
+    connectionType,
+    localPrinterName,
+    printCustomerCopy,
+    printSellerCopy,
+    wifiHost,
+    wifiPort,
+  ])
 
   function persistSettings() {
     if (validationError) {
@@ -222,11 +277,14 @@ export default function ConfiguracoesPage() {
     const defaults = getDefaultPrinterSettings()
     const saved = savePrinterSettings({
       ...defaults,
-      enabled,
+      autoPrintEnabled,
       connectionType,
       localPrinterName: localPrinterName.trim(),
       wifiHost: wifiHost.trim(),
       wifiPort: Math.max(1, Math.floor(Number(wifiPort) || 9100)),
+      printSellerCopy,
+      printCustomerCopy,
+      cutAfterEachCopy,
       headerText,
       footerText,
       updatedAt: defaults.updatedAt,
@@ -282,6 +340,13 @@ export default function ConfiguracoesPage() {
       saleItems,
       operatorName: user?.name ?? "Operador",
       storeName: user?.store?.name ?? "CaixaTotal",
+      copies:
+        printSellerCopy || printCustomerCopy
+          ? [
+              ...(printSellerCopy ? ["seller" as const] : []),
+              ...(printCustomerCopy ? ["customer" as const] : []),
+            ]
+          : ["seller"],
     })
     if (result.ok) {
       toast.success("Teste de impressao enviado")
@@ -316,6 +381,22 @@ export default function ConfiguracoesPage() {
   async function handleSaveMyStoreSettings() {
     const lowThreshold = parseThresholdInput(myStockAlertLowThreshold)
     const availableThreshold = parseThresholdInput(myStockAlertAvailableThreshold)
+    const nextMobileMenuShortcuts = sanitizeMobileMenuShortcuts(
+      myMobileMenuShortcuts,
+      storeMobileNavItems
+    )
+    const nextStockAlertLowColor = normalizeHexColor(
+      myStockAlertLowColor,
+      DEFAULT_STOCK_ALERT_COLORS.lowStock
+    )
+    const nextStockAlertOutColor = normalizeHexColor(
+      myStockAlertOutColor,
+      DEFAULT_STOCK_ALERT_COLORS.outOfStock
+    )
+    const nextStockAlertOkColor = normalizeHexColor(
+      myStockAlertOkColor,
+      DEFAULT_STOCK_ALERT_COLORS.inStock
+    )
 
     if (lowThreshold == null || availableThreshold == null) {
       toast.error("Informe limites válidos para estoque baixo e disponível")
@@ -328,31 +409,57 @@ export default function ConfiguracoesPage() {
 
     setMyStoreSaving(true)
     try {
-      await updateMyStoreSettings({
+      const updatedStore = await updateMyStoreSettings({
         onlineStoreWhatsappNumber: myStoreWhatsappNumber.trim() || null,
         onlineStoreWhatsappMessage: myStoreWhatsappMessage.trim() || null,
-        stockAlertLowColor: normalizeHexColor(
-          myStockAlertLowColor,
-          DEFAULT_STOCK_ALERT_COLORS.lowStock
-        ),
-        stockAlertOutColor: normalizeHexColor(
-          myStockAlertOutColor,
-          DEFAULT_STOCK_ALERT_COLORS.outOfStock
-        ),
-        stockAlertOkColor: normalizeHexColor(
-          myStockAlertOkColor,
-          DEFAULT_STOCK_ALERT_COLORS.inStock
-        ),
+        mobileMenuShortcuts: nextMobileMenuShortcuts,
+        stockAlertLowColor: nextStockAlertLowColor,
+        stockAlertOutColor: nextStockAlertOutColor,
+        stockAlertOkColor: nextStockAlertOkColor,
         stockAlertLowThreshold: lowThreshold,
         stockAlertAvailableThreshold: availableThreshold,
       })
-      await refreshUser()
+      if (user?.store) {
+        applyStoreSettings({
+          ...user.store,
+          ...updatedStore,
+          onlineStoreWhatsappNumber: myStoreWhatsappNumber.trim() || null,
+          onlineStoreWhatsappMessage: myStoreWhatsappMessage.trim() || null,
+          mobileMenuShortcuts: nextMobileMenuShortcuts,
+          stockAlertLowColor: nextStockAlertLowColor,
+          stockAlertOutColor: nextStockAlertOutColor,
+          stockAlertOkColor: nextStockAlertOkColor,
+          stockAlertLowThreshold: lowThreshold,
+          stockAlertAvailableThreshold: availableThreshold,
+        })
+      } else {
+        applyStoreSettings(updatedStore)
+      }
+      void refreshUser().catch((error) => {
+        console.error("Falha ao atualizar dados da loja apos salvar:", error)
+      })
       toast.success("Configuracoes da loja salvas")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao salvar configuracao da loja")
     } finally {
       setMyStoreSaving(false)
     }
+  }
+
+  function toggleMobileMenuShortcut(href: string) {
+    setMyMobileMenuShortcuts((current) => {
+      if (current.includes(href)) {
+        return current.filter((item) => item !== href)
+      }
+
+      const next = sanitizeMobileMenuShortcuts([...current, href], storeMobileNavItems)
+      if (next.length === current.length) {
+        toast.error(`Selecione ate ${MOBILE_MENU_SHORTCUT_LIMIT} atalhos fixos no mobile`)
+        return current
+      }
+
+      return next
+    })
   }
 
   return (
@@ -620,6 +727,72 @@ export default function ConfiguracoesPage() {
               </div>
             </div>
 
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium text-foreground">Menu mobile</Label>
+                <p className="text-xs text-muted-foreground">
+                  Escolha ate {MOBILE_MENU_SHORTCUT_LIMIT} atalhos que ficam fixos no rodape do celular.
+                  O restante aparece ao expandir o menu.
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {storeMobileNavItems.map((item) => {
+                  const selected = myMobileMenuShortcuts.includes(item.href)
+
+                  return (
+                    <button
+                      key={item.href}
+                      type="button"
+                      onClick={() => toggleMobileMenuShortcut(item.href)}
+                      className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                        selected
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-background hover:bg-muted/50"
+                      }`}
+                      disabled={myStoreSaving}
+                      aria-pressed={selected}
+                    >
+                      <span
+                        className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${
+                          selected ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        <item.icon className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{item.title}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {selected ? "Atalho fixo" : "Vai para o menu expandido"}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="space-y-2 rounded-xl border border-dashed border-border bg-muted/20 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Smartphone className="size-4" />
+                  Preview dos atalhos
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {effectiveMobileMenuItems.map((item) => (
+                    <span
+                      key={item.href}
+                      className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-xs"
+                    >
+                      <item.icon className="size-3.5" />
+                      {item.title}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Se nenhum atalho for selecionado, usamos o padrao da loja automaticamente.
+                </p>
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -654,7 +827,69 @@ export default function ConfiguracoesPage() {
                   Quando ativa, toda venda finalizada dispara impressao automaticamente.
                 </p>
               </div>
-              <Switch id="printer-enabled" checked={enabled} onCheckedChange={setEnabled} />
+              <Switch
+                id="printer-enabled"
+                checked={autoPrintEnabled}
+                onCheckedChange={setAutoPrintEnabled}
+              />
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium text-foreground">Vias e acabamento</Label>
+                <p className="text-xs text-muted-foreground">
+                  Escolha quais vias saem na impressao automatica. Essas opcoes tambem valem
+                  para teste e reimpressao manual.
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="flex items-start gap-3 rounded-lg border border-border p-3">
+                  <Checkbox
+                    checked={printSellerCopy}
+                    onCheckedChange={(checked) => setPrintSellerCopy(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="text-sm font-medium text-foreground">
+                      Via do vendedor
+                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      Imprime uma via identificada para o atendimento interno.
+                    </p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-lg border border-border p-3">
+                  <Checkbox
+                    checked={printCustomerCopy}
+                    onCheckedChange={(checked) => setPrintCustomerCopy(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="text-sm font-medium text-foreground">
+                      Via do cliente
+                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      Imprime uma via separada para entregar ao cliente.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="printer-cut-enabled">Corte automatico ao final de cada via</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Envia o comando de corte sempre que uma nova via for impressa.
+                  </p>
+                </div>
+                <Switch
+                  id="printer-cut-enabled"
+                  checked={cutAfterEachCopy}
+                  onCheckedChange={setCutAfterEachCopy}
+                />
+              </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

@@ -28,6 +28,7 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  applyStoreSettings: (store: NonNullable<AuthUser["store"]>) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -100,6 +101,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const applyStoreSettings = useCallback(
+    (store: NonNullable<AuthUser["store"]>) => {
+      setUser((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          store,
+        };
+      });
+
+      if (store.id) {
+        setStoredStoreId(store.id);
+        if (typeof store.offlineModeEnabled === "boolean") {
+          setOfflineModeEnabledForStore(store.id, store.offlineModeEnabled);
+        }
+      }
+    },
+    []
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -110,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         refreshUser,
+        applyStoreSettings,
       }}
     >
       {children}

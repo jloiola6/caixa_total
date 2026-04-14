@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { ensurePushSubscription } from "@/lib/push-notifications"
+import { isTransientFetchError } from "@/lib/api"
 
 export function PushNotificationsBootstrap() {
   const { user, loading } = useAuth()
@@ -14,9 +15,11 @@ export function PushNotificationsBootstrap() {
 
     const syncPush = async () => {
       if (cancelled) return
+      if (typeof window !== "undefined" && !window.navigator.onLine) return
       try {
         await ensurePushSubscription({ requestPermission: false })
       } catch (error) {
+        if (isTransientFetchError(error)) return
         console.error("Falha ao sincronizar push:", error)
       }
     }

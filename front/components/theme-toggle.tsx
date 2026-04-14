@@ -1,5 +1,6 @@
 "use client"
 
+import type { ComponentProps } from "react"
 import { useTheme } from "next-themes"
 import { Moon, Sun, Palette } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -20,9 +21,13 @@ const sidebarTriggerClass = cn(
 export function ThemeToggle({
   variant = "default",
   className,
+  side = "right",
+  align = "end",
 }: {
   variant?: "default" | "sidebar"
   className?: string
+  side?: ComponentProps<typeof DropdownMenuContent>["side"]
+  align?: ComponentProps<typeof DropdownMenuContent>["align"]
 }) {
   const { setTheme } = useTheme()
 
@@ -52,7 +57,7 @@ export function ThemeToggle({
       <DropdownMenuTrigger asChild>
         {variant === "sidebar" ? <div className="w-full">{trigger}</div> : trigger}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="right">
+      <DropdownMenuContent align={align} side={side}>
         <DropdownMenuItem onClick={() => setTheme("light")}>
           <Sun className="mr-2 size-4" />
           Claro

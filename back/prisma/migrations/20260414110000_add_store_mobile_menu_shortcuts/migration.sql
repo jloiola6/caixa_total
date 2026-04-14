@@ -1,0 +1,2 @@
+ALTER TABLE "Store"
+ADD COLUMN "mobileMenuShortcuts" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
