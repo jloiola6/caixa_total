@@ -333,9 +333,9 @@ export default function CaixaPage() {
   )
 
   return (
-    <div className="flex h-[calc(100svh-3rem)] flex-col md:h-svh">
+    <div className="flex h-[calc(100svh-3rem)] min-h-0 flex-col overflow-hidden md:h-svh">
       {/* Top bar with shortcuts hint */}
-      <div className="hidden md:flex items-center justify-between border-b border-border bg-muted/30 px-6 py-2">
+      <div className="hidden shrink-0 items-center justify-between border-b border-border bg-muted/30 px-6 py-2 md:flex">
         <h1 className="text-lg font-semibold text-foreground">Caixa</h1>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span>
@@ -366,7 +366,7 @@ export default function CaixaPage() {
       </div>
 
       {/* Mobile header */}
-      <div className="flex md:hidden items-center justify-between px-4 py-3 border-b border-border">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 md:hidden">
         <h1 className="text-lg font-semibold text-foreground">Caixa</h1>
         {cart.length > 0 && (
           <Badge variant="secondary" className="gap-1">
@@ -377,12 +377,13 @@ export default function CaixaPage() {
       </div>
 
       {/* Main content: 2 columns on desktop */}
-      <div className="flex flex-1 flex-col md:flex-row overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {/* Left: Search + Results */}
-        <div className="flex flex-col md:w-1/2 md:border-r border-border overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-border md:w-1/2 md:border-r">
           {/* Search bar */}
-          <div className="flex items-center gap-2 p-4 border-b border-border">
-            <div className="relative flex-1">
+          <div className="shrink-0 border-b border-border p-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 ref={searchInputRef}
@@ -393,19 +394,20 @@ export default function CaixaPage() {
                 className="pl-9"
                 autoFocus
               />
-            </div>
-            <Button
+              </div>
+              <Button
               variant="outline"
               size="icon"
               onClick={() => setScannerOpen(true)}
               title="Escanear código de barras"
-            >
-              <Camera className="size-4" />
-            </Button>
+              >
+                <Camera className="size-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Search results */}
-          <div className="flex-1 overflow-auto p-4">
+          <div className="min-h-0 flex-1 overflow-auto p-4">
             {query.trim() === "" ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2">
                 <Search className="size-10 opacity-30" />
@@ -474,35 +476,37 @@ export default function CaixaPage() {
         </div>
 
         {/* Right: Cart */}
-        <div className="flex flex-col md:w-1/2 overflow-hidden border-t md:border-t-0 border-border">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-border md:w-1/2 md:border-t-0">
           {/* Cart header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
-            <div className="flex items-center gap-2">
+          <div className="shrink-0 border-b border-border bg-muted/30 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
               <ShoppingCart className="size-4 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">
                 Carrinho
               </span>
+                {cart.length > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    {cartItemsCount} item(ns)
+                  </Badge>
+                )}
+              </div>
               {cart.length > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {cartItemsCount} item(ns)
-                </Badge>
-              )}
-            </div>
-            {cart.length > 0 && (
-              <Button
+                <Button
                 variant="ghost"
                 size="sm"
                 className="text-xs text-muted-foreground hover:text-destructive"
                 onClick={handleClearCart}
-              >
-                <X className="size-3 mr-1" />
-                Limpar
-              </Button>
-            )}
+                >
+                  <X className="size-3 mr-1" />
+                  Limpar
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Cart items */}
-          <div className="flex-1 overflow-auto p-4">
+          <div className="min-h-0 flex-1 overflow-auto p-4">
             {cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-2">
                 <ShoppingCart className="size-10 opacity-30" />
@@ -583,7 +587,7 @@ export default function CaixaPage() {
           </div>
 
           {/* Cart footer */}
-          <div className="border-t border-border p-4 bg-muted/30">
+          <div className="shrink-0 border-t border-border bg-muted/30 p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm text-muted-foreground">Total</span>
               <span className="text-2xl font-bold text-foreground">

@@ -106,7 +106,11 @@ function FilterSelect({
             <ChevronDown className="size-4 text-muted-foreground" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <PopoverContent
+          align="start"
+          className="flex w-[var(--radix-popover-trigger-width)] max-w-[var(--radix-popover-trigger-width)] flex-col overflow-hidden p-0"
+          style={{ maxHeight: "min(18rem, var(--radix-popover-content-available-height))" }}
+        >
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-xs text-muted-foreground">
               {selected.length}/{options.length}
@@ -126,7 +130,7 @@ function FilterSelect({
           {options.length === 0 ? (
             <p className="p-3 text-xs text-muted-foreground">Nenhuma opcao cadastrada.</p>
           ) : (
-            <ScrollArea className="max-h-56">
+            <ScrollArea className="min-h-0 flex-1 overflow-hidden">
               <div className="space-y-1 p-2">
                 {options.map((option, index) => {
                   const inputId = `${keyName}-${index}`
