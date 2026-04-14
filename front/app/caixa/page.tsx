@@ -379,7 +379,11 @@ export default function CaixaPage() {
       {/* Main content: 2 columns on desktop */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         {/* Left: Search + Results */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-border md:w-1/2 md:border-r">
+        <div
+          className={`flex flex-col overflow-hidden border-border md:min-h-0 md:w-1/2 md:flex-1 md:border-r ${
+            cart.length > 0 ? "min-h-[12rem] max-h-[32svh] shrink-0" : "min-h-0 flex-1"
+          }`}
+        >
           {/* Search bar */}
           <div className="shrink-0 border-b border-border p-4">
             <div className="flex items-center gap-2">
@@ -476,7 +480,7 @@ export default function CaixaPage() {
         </div>
 
         {/* Right: Cart */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-border md:w-1/2 md:border-t-0">
+        <div className="flex min-h-[20rem] flex-1 flex-col overflow-hidden border-t border-border md:min-h-0 md:w-1/2 md:border-t-0">
           {/* Cart header */}
           <div className="shrink-0 border-b border-border bg-muted/30 px-4 py-3">
             <div className="flex items-center justify-between">

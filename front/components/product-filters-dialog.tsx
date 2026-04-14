@@ -6,6 +6,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -13,8 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { PRODUCT_CATEGORY_LABELS, type ProductCategory } from "@/lib/types"
 
 export type ProductFilters = {
@@ -92,25 +95,28 @@ function FilterSelect({
   onToggle,
   onClear,
 }: FilterSectionProps) {
+  const [open, setOpen] = useState(false)
+
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-foreground">{title}</p>
-      <Popover>
-        <PopoverTrigger asChild>
+      <Collapsible open={open} onOpenChange={setOpen} className="space-y-2">
+        <CollapsibleTrigger asChild>
           <Button
             type="button"
             variant="outline"
             className="w-full justify-between font-normal"
           >
             <span className="truncate text-left">{selectedSummary(keyName, selected)}</span>
-            <ChevronDown className="size-4 text-muted-foreground" />
+            <ChevronDown
+              className={`size-4 text-muted-foreground transition-transform ${
+                open ? "rotate-180" : ""
+              }`}
+            />
           </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="flex w-[var(--radix-popover-trigger-width)] max-w-[var(--radix-popover-trigger-width)] flex-col overflow-hidden p-0"
-          style={{ maxHeight: "min(18rem, var(--radix-popover-content-available-height))" }}
-        >
+        </CollapsibleTrigger>
+
+        <CollapsibleContent className="overflow-hidden rounded-md border border-border">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <span className="text-xs text-muted-foreground">
               {selected.length}/{options.length}
@@ -130,8 +136,8 @@ function FilterSelect({
           {options.length === 0 ? (
             <p className="p-3 text-xs text-muted-foreground">Nenhuma opcao cadastrada.</p>
           ) : (
-            <ScrollArea className="min-h-0 flex-1 overflow-hidden">
-              <div className="space-y-1 p-2">
+            <div className="max-h-56 overflow-y-auto p-2">
+              <div className="space-y-1">
                 {options.map((option, index) => {
                   const inputId = `${keyName}-${index}`
                   const checked = selected.includes(option)
@@ -153,10 +159,10 @@ function FilterSelect({
                   )
                 })}
               </div>
-            </ScrollArea>
+            </div>
           )}
-        </PopoverContent>
-      </Popover>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }
