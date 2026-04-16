@@ -6,6 +6,7 @@ import { Filter, MessageCircle, Search, SlidersHorizontal, Store as StoreIcon } 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -338,6 +339,7 @@ function LojaPublicaContent() {
   )
   const [sortBy, setSortBy] = useState<StoreSort>("relevance")
   const [inStockOnly, setInStockOnly] = useState(true)
+  const [previewProduct, setPreviewProduct] = useState<StorefrontProduct | null>(null)
 
   useEffect(() => {
     if (!slug) {
@@ -589,28 +591,45 @@ function LojaPublicaContent() {
                 return (
                   <Card key={product.id} className="overflow-hidden">
                     <CardContent className="flex h-full flex-col p-0">
-                      <div className="relative aspect-[4/3] overflow-hidden border-b border-border bg-muted">
-                        {product.imageUrl ? (
+                      {product.imageUrl ? (
+                        <button
+                          type="button"
+                          className="relative block aspect-[4/3] w-full overflow-hidden border-b border-border bg-muted text-left transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                          onClick={() => setPreviewProduct(product)}
+                          title="Ampliar imagem"
+                          aria-label={`Visualizar imagem de ${product.name}`}
+                        >
                           <img
                             src={product.imageUrl}
                             alt={product.name}
                             className="h-full w-full object-cover"
                           />
-                        ) : (
+                          <Badge
+                            variant="secondary"
+                            className={`absolute left-3 top-3 ${CATEGORY_COLORS[product.category] || ""}`}
+                          >
+                            {PRODUCT_CATEGORY_LABELS[product.category]}
+                          </Badge>
+                          <div className="absolute right-3 top-3">
+                            {stockBadge(displayStock, stockAlertColors, stockAlertThresholds)}
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="relative aspect-[4/3] overflow-hidden border-b border-border bg-muted">
                           <div className="flex h-full w-full items-center justify-center text-4xl font-semibold text-muted-foreground">
                             {product.name.charAt(0).toUpperCase()}
                           </div>
-                        )}
-                        <Badge
-                          variant="secondary"
-                          className={`absolute left-3 top-3 ${CATEGORY_COLORS[product.category] || ""}`}
-                        >
-                          {PRODUCT_CATEGORY_LABELS[product.category]}
-                        </Badge>
-                        <div className="absolute right-3 top-3">
-                          {stockBadge(displayStock, stockAlertColors, stockAlertThresholds)}
+                          <Badge
+                            variant="secondary"
+                            className={`absolute left-3 top-3 ${CATEGORY_COLORS[product.category] || ""}`}
+                          >
+                            {PRODUCT_CATEGORY_LABELS[product.category]}
+                          </Badge>
+                          <div className="absolute right-3 top-3">
+                            {stockBadge(displayStock, stockAlertColors, stockAlertThresholds)}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       <div className="flex flex-1 flex-col p-4">
                         <h2 className="text-base font-semibold text-foreground">{product.name}</h2>
@@ -674,6 +693,23 @@ function LojaPublicaContent() {
         options={filterOptions}
         onApply={setProductFilters}
       />
+
+      <Dialog open={!!previewProduct} onOpenChange={(open) => !open && setPreviewProduct(null)}>
+        <DialogContent className="max-w-4xl p-4">
+          <DialogHeader>
+            <DialogTitle>{previewProduct?.name}</DialogTitle>
+          </DialogHeader>
+          {previewProduct?.imageUrl && (
+            <div className="overflow-hidden rounded-md border border-border bg-muted">
+              <img
+                src={previewProduct.imageUrl}
+                alt={previewProduct.name}
+                className="max-h-[75vh] w-full object-contain"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

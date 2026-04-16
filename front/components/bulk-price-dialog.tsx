@@ -26,7 +26,7 @@ import { CurrencyInput } from "@/components/currency-input"
 import { PercentInput } from "@/components/percent-input"
 import { upsertProduct } from "@/lib/db"
 import { formatCurrency, formatPercentMaskInput } from "@/lib/format"
-import { syncToServer } from "@/lib/sync"
+import { syncProductsAfterMutation } from "@/lib/sync"
 import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import type { Product } from "@/lib/types"
 import { toast } from "sonner"
@@ -125,6 +125,8 @@ export function BulkPriceDialog({
 
     const pct = percentHundredths / 100
 
+    const updatedProducts: Product[] = []
+
     for (const p of products) {
       let newCents: number
       if (mode === "percent") {
@@ -134,19 +136,19 @@ export function BulkPriceDialog({
       } else {
         newCents = Math.max(0, p.priceCents + deltaCents)
       }
-      upsertProduct({
+      updatedProducts.push(upsertProduct({
         id: p.id,
         name: p.name,
         category: p.category,
         priceCents: newCents,
-      })
+      }))
     }
 
     setConfirmOpen(false)
     onOpenChange(false)
     onApplied()
     toast.success(`Preços atualizados (${products.length} produto(s)).`)
-    const syncResult = await syncToServer()
+    const syncResult = await syncProductsAfterMutation(updatedProducts)
     if (!syncResult.ok) {
       toast.error(syncResult.error ?? "Falha ao sincronizar com o servidor")
     }

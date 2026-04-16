@@ -626,7 +626,7 @@ export function adjustStock(
   delta: number,
   reason?: string | null,
   sizeVariantId?: string | null
-): Product | null {
+): { product: Product; stockLog: StockLog } | null {
   const products = read<Product>(getProductsKey())
   const idx = products.findIndex((p) => p.id === productId)
   if (idx === -1) return null
@@ -667,7 +667,7 @@ export function adjustStock(
     const logs = read<StockLog>(getStockLogsKey())
     logs.push(log)
     write(getStockLogsKey(), logs)
-    return products[idx]
+    return { product: products[idx], stockLog: log }
   }
 
   if (current.category === "roupas" && current.clothingSizes) {
@@ -703,7 +703,7 @@ export function adjustStock(
     const logs = read<StockLog>(getStockLogsKey())
     logs.push(log)
     write(getStockLogsKey(), logs)
-    return products[idx]
+    return { product: products[idx], stockLog: log }
   }
 
   const newStock = current.stock + delta
@@ -729,7 +729,7 @@ export function adjustStock(
   logs.push(log)
   write(getStockLogsKey(), logs)
 
-  return products[idx]
+  return { product: products[idx], stockLog: log }
 }
 
 export function getStockLogs(productId?: string): StockLog[] {

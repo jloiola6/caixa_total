@@ -1,6 +1,16 @@
 import type { PaymentMethod, ProductCategory } from "@/lib/types"
 import { getOrCreateDeviceId } from "@/lib/device-id"
 
+class ApiRequestError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ApiRequestError"
+    this.status = status
+  }
+}
+
 const getBaseUrl = () =>
   (typeof window !== "undefined"
     ? (process.env.NEXT_PUBLIC_API_URL ?? "")
@@ -29,6 +39,27 @@ export function isTransientFetchError(error: unknown): boolean {
   if (error.name === "TypeError") return matchesFetchMessage
 
   return matchesFetchMessage
+}
+
+async function buildApiErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = (await res.clone().json()) as { error?: string; message?: string }
+    const message = data?.error ?? data?.message
+    if (typeof message === "string" && message.trim()) {
+      return message.trim()
+    }
+  } catch {
+    // Ignora corpo nao-JSON.
+  }
+
+  try {
+    const text = (await res.clone().text()).trim()
+    if (text) return text
+  } catch {
+    // Ignora corpo sem texto legivel.
+  }
+
+  return fallback
 }
 
 const TOKEN_KEY = "caixatotal_token";
@@ -89,7 +120,14 @@ export async function postSync(
     headers,
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Sync failed: ${res.status}`);
+  if (!res.ok) {
+    const fallback =
+      res.status === 413
+        ? "O volume de dados para sincronizar excedeu o limite aceito pela API."
+        : `Sync failed: ${res.status}`
+    const message = await buildApiErrorMessage(res, fallback)
+    throw new ApiRequestError(message, res.status)
+  }
   return res.json();
 }
 

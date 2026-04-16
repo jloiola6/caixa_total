@@ -22,7 +22,7 @@ import {
 import { CurrencyInput } from "@/components/currency-input"
 import { BarcodeScanner } from "@/components/barcode-scanner"
 import { upsertProduct, getAllBarcodes } from "@/lib/db"
-import { syncToServer } from "@/lib/sync"
+import { syncProductsAfterMutation } from "@/lib/sync"
 import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
@@ -352,8 +352,8 @@ export function ProductFormDialog({
     }
   }
 
-  async function runSyncAfterLocalSave() {
-    const result = await syncToServer()
+  async function runSyncAfterLocalSave(products: Product[]) {
+    const result = await syncProductsAfterMutation(products)
     if (!result.ok) {
       toast.error(result.error ?? "Falha ao sincronizar com o servidor")
     }
@@ -406,7 +406,7 @@ export function ProductFormDialog({
       }
 
       const nowIso = new Date().toISOString()
-      upsertProduct({
+      const savedProduct = upsertProduct({
         id: product?.id,
         name: name.trim(),
         sku: sku.trim() || null,
@@ -442,7 +442,7 @@ export function ProductFormDialog({
       )
       onOpenChange(false)
       onSaved()
-      void runSyncAfterLocalSave()
+      void runSyncAfterLocalSave([savedProduct])
       return
     }
 
@@ -471,7 +471,7 @@ export function ProductFormDialog({
       }
 
       const nowIso = new Date().toISOString()
-      upsertProduct({
+      const savedProduct = upsertProduct({
         id: product?.id,
         name: name.trim(),
         sku: sku.trim() || null,
@@ -507,11 +507,11 @@ export function ProductFormDialog({
       )
       onOpenChange(false)
       onSaved()
-      void runSyncAfterLocalSave()
+      void runSyncAfterLocalSave([savedProduct])
       return
     }
 
-    upsertProduct({
+    const savedProduct = upsertProduct({
       id: product?.id,
       name: name.trim(),
       sku: sku.trim() || null,
@@ -533,7 +533,7 @@ export function ProductFormDialog({
     toast.success(isEditing ? "Produto atualizado" : "Produto cadastrado")
     onOpenChange(false)
     onSaved()
-    void runSyncAfterLocalSave()
+    void runSyncAfterLocalSave([savedProduct])
   }
 
   const showBrand = category === "roupas" || category === "tenis"

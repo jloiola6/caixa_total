@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { adjustStock } from "@/lib/db"
-import { syncToServer } from "@/lib/sync"
+import { syncProductStockAfterMutation } from "@/lib/sync"
 import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import type { Product } from "@/lib/types"
 import { toast } from "sonner"
@@ -102,7 +102,7 @@ export function StockAdjustDialog({
     setReason("")
     onOpenChange(false)
     onAdjusted()
-    const syncResult = await syncToServer()
+    const syncResult = await syncProductStockAfterMutation(result.product, result.stockLog)
     if (!syncResult.ok) {
       toast.error(syncResult.error ?? "Falha ao sincronizar com o servidor")
     }
