@@ -11,12 +11,14 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "migrate:images-gcs": "tsx scripts/migrate-product-images-to-gcs.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
     "@prisma/client": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

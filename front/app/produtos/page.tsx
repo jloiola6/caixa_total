@@ -512,12 +512,12 @@ export default function ProdutosPage() {
     if (stockLevel === "low")
       return (
         <Badge variant="secondary" style={stockBadgeStyle(stockAlertColors.lowStock)}>
-          {stock} (ate {stockAlertThresholds.lowStock})
+          {stock}
         </Badge>
       )
     return (
       <Badge variant="secondary" style={stockBadgeStyle(stockAlertColors.inStock)}>
-        {stock} (a partir de {stockAlertThresholds.inStock})
+        {stock}
       </Badge>
     )
   }

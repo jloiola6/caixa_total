@@ -13,7 +13,7 @@ Para um resumo rápido, veja também o [README](../README.md).
 | API | Google Cloud Run (container Node.js) | Autenticação, admin, sync, relatórios |
 | Front web | Google Cloud Run (nginx servindo `out/` do Next.js) | Interface estática exportada |
 | Banco | PostgreSQL gerenciado (ex.: Neon) | Dados persistidos |
-| Imagens | Artifact Registry (`us-central1-docker.pkg.dev`) | Registry das imagens Docker |
+| Fotos de produto | Google Cloud Storage (bucket dedicado) | URLs públicas em `imageUrl`; Docker continua no Artifact Registry |
 | CI/CD | GitHub Actions | Build ao **push de tags** + deploy após **aprovação manual** |
 
 Fluxo de dados no navegador:
@@ -150,8 +150,50 @@ Definidas no **Cloud Run** do serviço da API (não no GitHub, exceto se você e
 | `RESEND_API_KEY` | Não | E-mail (recuperação de senha) | vazio ou chave Resend |
 | `RESEND_FROM` | Não | Remetente | `Caixa Total <no-reply@seudominio.com>` |
 | `SEED_*` | Só seed local | Normalmente **não** usadas em runtime prod | — |
+| `GCS_BUCKET_NAME` | Para upload de fotos | Nome do bucket (ex.: `caixa-total-produtos`) | ver secção abaixo |
+| `GCS_PUBLIC_BASE_URL` | Para upload de fotos | URL base pública sem barra final | `https://storage.googleapis.com/caixa-total-produtos` |
 
 Referência de código: `back/src/config.ts` (carrega `dotenv` em dev; em Cloud Run as vars vêm do painel).
+
+### 6.1 Imagens de produto (Google Cloud Storage)
+
+As fotos deixam de ir em base64 para o Postgres: o front pede `POST /uploads/product-image/sign`, envia o ficheiro com **PUT** para a URL assinada e guarda só a **URL HTTPS** em `Product.imageUrl`.
+
+**Infra (GCP) — automático no teu PC (recomendado):**
+
+Com `gcloud` autenticado e projeto definido:
+
+```bash
+cd back
+chmod +x scripts/setup-gcs-product-bucket.sh
+./scripts/setup-gcs-product-bucket.sh
+```
+
+O script [`back/scripts/setup-gcs-product-bucket.sh`](../back/scripts/setup-gcs-product-bucket.sh) faz: criar o bucket (nome por defeito `${PROJECT_ID}-caixa-product-images`), *uniform bucket-level access*, IAM `allUsers` → **Object Viewer**, SA do runtime (por defeito `PROJECT_NUMBER-compute@developer.gserviceaccount.com`) → **Object Admin**, e CORS com `PUT` (origem `*` por defeito — restrinja no consola GCS em produção).
+
+Variáveis opcionais: `GCP_PROJECT_ID`, `GCS_BUCKET_NAME`, `GCS_REGION`, `CLOUD_RUN_SA_EMAIL`. Migração na mesma corrida: `RUN_MIGRATE=1` com `DATABASE_URL` definido ou em `back/.env`.
+
+**Infra (GCP) — manual (alternativa):**
+
+1. Criar um bucket **só para media pública**, com *uniform bucket-level access*.
+2. SA do **Cloud Run** com **Storage Object Admin** no bucket.
+3. **`allUsers`** → **Storage Object Viewer** no bucket (só este bucket).
+4. `GCS_BUCKET_NAME` e `GCS_PUBLIC_BASE_URL` no Cloud Run e em `.env` local.
+5. **CORS** no bucket para `PUT` a partir da origem do front.
+
+**Migração de dados antigos** (Neon com `data:image...` em `imageUrl`):
+
+```bash
+cd back
+export DATABASE_URL="postgresql://..."
+export GCS_BUCKET_NAME="seu-bucket"
+export GCS_PUBLIC_BASE_URL="https://storage.googleapis.com/seu-bucket"
+# Credenciais: GOOGLE_APPLICATION_CREDENTIALS=/caminho/sa.json ou:
+# gcloud auth application-default login
+pnpm migrate:images-gcs
+```
+
+Ordem recomendada: configurar GCS + envs → deploy do backend → correr o script de migração → deploy do front. Clientes offline com base64 no dispositivo: após atualizar o app, ao sincronizar o servidor **rejeita** `data:` no `POST /sync`; é preciso voltar a anexar a foto ou limpar a imagem antes de sincronizar se ainda aparecer erro.
 
 ---
 
@@ -275,11 +317,17 @@ Authorization: Bearer <JWT>
 
 O front persiste isso em coleções no `IndexedDB` por loja (ver `applyServerState` em `front/lib/sync-conflict.ts`).
 
-### 9.2 `POST /sync`
+### 9.2 `POST /uploads/product-image/sign`
 
-Corpo JSON (resumo): `products`, `sales`, `sale_items`, `stock_logs` (e opcionalmente `storeId`). Tipagem detalhada no backend: `back/src/routes/sync.ts` (`SyncBody` e payloads).
+**Body JSON:** `storeId` (obrigatório para super admin), `contentType` (`image/jpeg` \| `png` \| `webp` \| `gif`), `fileSize` (bytes, máx. 2MB).
 
-### 9.3 Relatórios
+**Resposta:** `{ uploadUrl, publicUrl, objectName }` — o cliente faz `PUT` em `uploadUrl` com o binário e `Content-Type` igual ao pedido; grava `publicUrl` no campo `imageUrl` do produto.
+
+### 9.3 `POST /sync`
+
+Corpo JSON (resumo): `products`, `sales`, `sale_items`, `stock_logs` (e opcionalmente `storeId`). Tipagem detalhada no backend: `back/src/routes/sync.ts` (`SyncBody` e payloads). Produtos com `imageUrl` começando por `data:` são rejeitados (400).
+
+### 9.4 Relatórios
 
 Todas usam `start` e `end` em **ISO 8601** e opcional `storeId`.
 

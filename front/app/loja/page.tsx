@@ -2,13 +2,14 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Filter, MessageCircle, Search, SlidersHorizontal, Store as StoreIcon } from "lucide-react"
+import { ArrowBigLeft, Filter, MessageCircle, Search, SlidersHorizontal, Store as StoreIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useAuth } from "@/contexts/auth-context"
 import {
   Select,
   SelectContent,
@@ -206,13 +207,13 @@ function stockBadge(
   if (level === "low") {
     return (
       <Badge variant="secondary" style={stockBadgeStyle(colors.lowStock)}>
-        Estoque baixo: {stock} (ate {thresholds.lowStock})
+        Estoque baixo: {stock} 
       </Badge>
     )
   }
   return (
     <Badge variant="secondary" style={stockBadgeStyle(colors.inStock)}>
-      Disponivel: {stock} (a partir de {thresholds.inStock})
+      Disponivel: {stock}
     </Badge>
   )
 }
@@ -329,6 +330,7 @@ function LojaPublicaContent() {
   const slug = (searchParams.get("slug") ?? "").trim().toLowerCase()
 
   const [storefront, setStorefront] = useState<StorefrontResponse | null>(null)
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reloadTick, setReloadTick] = useState(0)
@@ -433,6 +435,11 @@ function LojaPublicaContent() {
     return products.reduce((acc, product) => acc + getDisplayStock(product), 0)
   }, [products])
 
+  const myStorefrontPath = useMemo(() => {
+    if (!user?.store?.slug) return ""
+    return `/loja?slug=${encodeURIComponent(user.store.slug)}`
+  }, [user?.store?.slug])
+
   function clearAllFilters() {
     setQuery("")
     setProductFilters(createEmptyProductFilters())
@@ -478,9 +485,20 @@ function LojaPublicaContent() {
                 <StoreIcon className="size-3.5" />
                 Loja online publica
               </div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
-                {storefront.store.name}
-              </h1>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (!myStorefrontPath) return
+                    window.open(myStorefrontPath, "noopener,noreferrer")
+                  }}>
+                  <ArrowBigLeft/>  
+                </Button>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+                  {storefront.store.name}
+                </h1>
+              </div>
               <p className="text-sm text-muted-foreground">
                 Consulte produtos, precos e disponibilidade de estoque sem precisar de login.
               </p>

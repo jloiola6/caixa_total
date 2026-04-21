@@ -23,6 +23,9 @@ import { CurrencyInput } from "@/components/currency-input"
 import { BarcodeScanner } from "@/components/barcode-scanner"
 import { upsertProduct, getAllBarcodes } from "@/lib/db"
 import { syncProductsAfterMutation } from "@/lib/sync"
+import { getStoredStoreId } from "@/lib/auth-api"
+import { signProductImageUpload } from "@/lib/upload"
+import { syncToServer } from "@/lib/sync"
 import { ensureOnlinePolicyAllowsWrite } from "@/lib/offline-mode"
 import type { Product, ProductCategory } from "@/lib/types"
 import { PRODUCT_CATEGORY_LABELS } from "@/lib/types"
@@ -330,20 +333,54 @@ export function ProductFormDialog({
     printWindow.document.close()
   }
 
-  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  const ALLOWED_IMAGE_TYPES = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ])
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 2 * 1024 * 1024) {
       toast.error("Imagem muito grande. Maximo 2MB.")
+      if (fileInputRef.current) fileInputRef.current.value = ""
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      setImageUrl(reader.result as string)
+    const contentType = file.type && ALLOWED_IMAGE_TYPES.has(file.type) ? file.type : ""
+    if (!contentType) {
+      toast.error("Use JPEG, PNG, WebP ou GIF.")
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
     }
-    reader.readAsDataURL(file)
-    // Reset input
-    if (fileInputRef.current) fileInputRef.current.value = ""
+    const storeId = getStoredStoreId()
+    if (!storeId) {
+      toast.error("Loja nao identificada. Entre novamente no sistema.")
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
+    try {
+      const { uploadUrl, publicUrl } = await signProductImageUpload({
+        storeId,
+        contentType,
+        fileSize: file.size,
+      })
+      const put = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": contentType },
+      })
+      if (!put.ok) {
+        throw new Error(`Envio da imagem falhou (${put.status})`)
+      }
+      setImageUrl(publicUrl)
+      toast.success("Imagem enviada")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha no upload da imagem")
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
   }
 
   function handleZeroPrefixedNumberFocus(e: React.FocusEvent<HTMLInputElement>) {

@@ -19,4 +19,8 @@ export const config = {
   webPushVapidPublicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY ?? "",
   webPushVapidPrivateKey: process.env.WEB_PUSH_VAPID_PRIVATE_KEY ?? "",
   isProduction: process.env.NODE_ENV === "production",
+  /** Bucket GCS para fotos de produto (opcional; sem isso, upload fica desativado). */
+  gcsBucketName: process.env.GCS_BUCKET_NAME ?? "",
+  /** Base pública, ex.: https://storage.googleapis.com/nome-do-bucket */
+  gcsPublicBaseUrl: process.env.GCS_PUBLIC_BASE_URL ?? "",
 } as const;

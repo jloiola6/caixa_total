@@ -337,7 +337,11 @@ gcloud run services update caixa-total-back \
 | `WEB_PUSH_VAPID_SUBJECT` | Backend | Nao | Contato do emissor de push (ex.: `mailto:suporte@dominio.com`) |
 | `WEB_PUSH_VAPID_PUBLIC_KEY` | Backend | Nao | Chave pública VAPID usada no frontend para registrar push |
 | `WEB_PUSH_VAPID_PRIVATE_KEY` | Backend | Nao | Chave privada VAPID usada no backend para enviar push |
+| `GCS_BUCKET_NAME` | Backend | Nao | Bucket para fotos de produto (upload assinado); sem isso, upload de imagem fica desativado |
+| `GCS_PUBLIC_BASE_URL` | Backend | Nao | Base pública do bucket, ex.: `https://storage.googleapis.com/nome-do-bucket` |
 | `NEXT_PUBLIC_API_URL` | Frontend | Sim (build time) | URL do backend, embutida no build estático |
+
+**Criar bucket + IAM + CORS (na tua máquina, com `gcloud` autenticado):** `cd back && ./scripts/setup-gcs-product-bucket.sh` — ver [docs/DEPLOY-PRODUCAO.md](docs/DEPLOY-PRODUCAO.md) secção 6.1.
 
 ### Habilitar Push Web (passo a passo rápido)
 
@@ -682,6 +686,10 @@ Os dados vêm **da API quando há conexão**; sem rede, a tela usa o que estiver
 
 - `GET /sync`
 - `POST /sync`
+
+### Uploads (imagens de produto)
+
+- `POST /uploads/product-image/sign` — corpo JSON: `storeId` (obrigatório para super admin), `contentType`, `fileSize`; resposta: `uploadUrl`, `publicUrl`, `objectName` (requer `GCS_*` no backend)
 
 ### Relatórios
 

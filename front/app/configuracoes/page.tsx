@@ -1,18 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import {
-  RefreshCw,
-  Save,
-  Printer,
-  Wifi,
-  Cable,
-  TestTube2,
-  CloudOff,
-  ExternalLink,
-  Smartphone,
-  Store,
-} from "lucide-react"
+import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2, CloudOff, ExternalLink, Store, CopyCheckIcon, CopyIcon, Smartphone } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
@@ -560,19 +549,6 @@ export default function ConfiguracoesPage() {
                 <Save className="size-4" />
                 {storesSaving ? "Salvando..." : "Salvar configuracao"}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2"
-                disabled={!selectedStore || !storeOnlineEnabled}
-                onClick={() => {
-                  if (!selectedStorefrontPath) return
-                  window.open(selectedStorefrontPath, "_blank", "noopener,noreferrer")
-                }}
-              >
-                <ExternalLink className="size-4" />
-                Visualizar site online
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -643,11 +619,35 @@ export default function ConfiguracoesPage() {
                     disabled={!myStorefrontPath || !user.store.onlineStoreEnabled}
                     onClick={() => {
                       if (!myStorefrontPath) return
-                      window.open(myStorefrontPath, "_blank", "noopener,noreferrer")
+                      window.open(myStorefrontPath, "noopener,noreferrer")
                     }}
                   >
                     <ExternalLink className="size-4" />
                     Visualizar site online
+                  </Button>
+                  <Button
+                    id="my-online-copy-url"
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={!myStorefrontPath || !user.store.onlineStoreEnabled}
+                    onClick={async () => {
+                      if (!myStorefrontPath) return
+                      const absoluteUrl = new URL(
+                        myStorefrontPath,
+                        window.location.origin
+                      ).href
+                      try {
+                        await navigator.clipboard.writeText(absoluteUrl)
+                        toast.success("URL da loja online copiada com sucesso!")
+                      } catch {
+                        toast.error(
+                          "Não foi possível copiar a URL. Verifique as permissões do navegador."
+                        )
+                      }
+                    }}
+                  >
+                    <CopyIcon className="size-4" />
                   </Button>
                 </div>
               </div>

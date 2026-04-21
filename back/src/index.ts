@@ -10,6 +10,7 @@ import { reportRouter } from "./routes/report.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { financeRouter } from "./routes/finance.js";
 import { storefrontRouter } from "./routes/storefront.js";
+import { uploadsRouter } from "./routes/uploads.js";
 
 const app = express();
 const JSON_BODY_LIMIT = "50mb";
@@ -43,6 +44,7 @@ app.use("/report", reportRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/finance", financeRouter);
 app.use("/storefront", storefrontRouter);
+app.use("/uploads", uploadsRouter);
 
 app.use(((error, _req, res, next) => {
   if (error?.type === "entity.too.large") {

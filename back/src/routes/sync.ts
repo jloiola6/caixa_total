@@ -350,6 +350,18 @@ syncRouter.post("/", async (req, res) => {
       });
     }
 
+    if (
+      products.some(
+        (p) => typeof p.imageUrl === "string" && (p.imageUrl as string).startsWith("data:"),
+      )
+    ) {
+      res.status(400).json({
+        error:
+          "Imagens em base64 não são mais aceites. Atualize o aplicativo e envie fotos pelo armazenamento (GCS), ou sincronize após migração no servidor.",
+      });
+      return;
+    }
+
     for (const p of products) {
       const parsedCategory = toProductCategory(p.category);
       const productType =
