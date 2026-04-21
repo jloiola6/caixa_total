@@ -34,6 +34,7 @@ REGION="${GCS_REGION:-us-central1}"
 PROJECT_NUMBER="$(gcloud projects describe "${PROJECT}" --format='value(projectNumber)')"
 DEFAULT_COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 RUNTIME_SA="${CLOUD_RUN_SA_EMAIL:-${DEFAULT_COMPUTE_SA}}"
+SERVERLESS_ROBOT_SA="service-${PROJECT_NUMBER}@serverless-robot-prod.iam.gserviceaccount.com"
 
 BUCKET="${GCS_BUCKET_NAME:-${PROJECT}-caixa-product-images}"
 PUBLIC_BASE="https://storage.googleapis.com/${BUCKET}"
@@ -73,6 +74,30 @@ RC=$?
 set -e
 if [[ "$RC" -ne 0 ]]; then
   echo "    (Aviso: binding já existente ou SA incorreta. Defina CLOUD_RUN_SA_EMAIL se o Cloud Run usar outra conta.)"
+fi
+
+echo "==> IAM: ${RUNTIME_SA} -> iam.serviceAccountTokenCreator (URL assinada v4)"
+set +e
+gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
+  --member="serviceAccount:${RUNTIME_SA}" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --project="${PROJECT}" 2>/dev/null
+RC=$?
+set -e
+if [[ "$RC" -ne 0 ]]; then
+  echo "    (Aviso: falhou ao conceder TokenCreator na SA de runtime. Verifique permissões de IAM.)"
+fi
+
+echo "==> IAM: ${SERVERLESS_ROBOT_SA} -> iam.serviceAccountTokenCreator em ${RUNTIME_SA} (Cloud Run)"
+set +e
+gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
+  --member="serviceAccount:${SERVERLESS_ROBOT_SA}" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --project="${PROJECT}" 2>/dev/null
+RC=$?
+set -e
+if [[ "$RC" -ne 0 ]]; then
+  echo "    (Aviso: falhou ao conceder TokenCreator para o service agent do Cloud Run. Verifique permissões de IAM.)"
 fi
 
 CORS_FILE="$(mktemp)"

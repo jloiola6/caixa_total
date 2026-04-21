@@ -431,6 +431,7 @@ gcloud run deploy caixa-total-front \
 | Front chama `localhost:4000` em prod | Build sem `NEXT_PUBLIC_API_URL` / secret `BACKEND_URL` errado |
 | Login ok mas produtos vazios em outro PC | Antes: só localStorage; agora: verificar se `GET /sync` retorna 200 e CORS |
 | CORS bloqueado | `FRONT_URL` no backend não inclui a origem exata do navegador |
+| `POST /uploads/product-image/sign` retorna 500 (`signBlob denied`) | Falta `roles/iam.serviceAccountTokenCreator` na SA usada pelo Cloud Run para assinar URL v4 |
 | Não consigo criar chave JSON da SA | Policy `iam.disableServiceAccountKeyCreation` na org/projeto |
 
 ---
