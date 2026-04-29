@@ -18,8 +18,6 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
-      bucket: ${{ steps.bucket.outputs.bucket }}
-      public_base_url: ${{ steps.bucket.outputs.public_base_url }}
 
     steps:
       - name: Checkout
@@ -47,6 +45,9 @@ jobs:
         run: |
           $bucket = "${{ vars.GCS_DESKTOP_BUCKET }}"
           if ([string]::IsNullOrWhiteSpace($bucket)) {
+            if ([string]::IsNullOrWhiteSpace("${{ env.PROJECT_ID }}")) {
+              throw "Defina o secret GCP_PROJECT_ID ou a repository variable GCS_DESKTOP_BUCKET."
+            }
             $bucket = "${{ env.PROJECT_ID }}-caixa-total-desktop"
           }
           $publicBaseUrl = "https://storage.googleapis.com/$bucket"
@@ -90,6 +91,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve bucket URL
+        id: bucket
+        shell: bash
+        run: |
+          BUCKET="${{ vars.GCS_DESKTOP_BUCKET }}"
+          if [ -z "${BUCKET}" ]; then
+            if [ -z "${PROJECT_ID}" ]; then
+              echo "Defina o secret GCP_PROJECT_ID ou a repository variable GCS_DESKTOP_BUCKET." >&2
+              exit 1
+            fi
+            BUCKET="${PROJECT_ID}-caixa-total-desktop"
+          fi
+          PUBLIC_BASE_URL="https://storage.googleapis.com/${BUCKET}"
+          echo "bucket=${BUCKET}" >> "${GITHUB_OUTPUT}"
+          echo "public_base_url=${PUBLIC_BASE_URL}" >> "${GITHUB_OUTPUT}"
+
       - name: Download desktop artifacts
         uses: actions/download-artifact@v4
         with:
@@ -108,13 +125,13 @@ jobs:
         working-directory: front
         env:
           GCP_PROJECT_ID: ${{ env.PROJECT_ID }}
-          GCS_DESKTOP_BUCKET: ${{ needs.build_windows.outputs.bucket }}
+          GCS_DESKTOP_BUCKET: ${{ steps.bucket.outputs.bucket }}
           GCS_DESKTOP_REGION: ${{ env.GCS_DESKTOP_REGION }}
         run: bash scripts/setup-gcs-desktop-bucket.sh
 
       - name: Publish latest Windows installer
         env:
-          BUCKET: ${{ needs.build_windows.outputs.bucket }}
+          BUCKET: ${{ steps.bucket.outputs.bucket }}
         run: |
           gcloud storage cp desktop-artifacts/dist-desktop/${{ env.INSTALLER_NAME }} \
             gs://${BUCKET}/downloads/${{ env.INSTALLER_NAME }} \
@@ -134,5 +151,5 @@ jobs:
       - name: Summary
         run: |
           echo "Windows desktop publicado:"
-          echo "${{ needs.build_windows.outputs.public_base_url }}/downloads/${{ env.INSTALLER_NAME }}"
-          echo "${{ needs.build_windows.outputs.public_base_url }}/desktop/latest.json"
+          echo "${{ steps.bucket.outputs.public_base_url }}/downloads/${{ env.INSTALLER_NAME }}"
+          echo "${{ steps.bucket.outputs.public_base_url }}/desktop/latest.json"
