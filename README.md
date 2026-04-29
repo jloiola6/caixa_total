@@ -568,12 +568,14 @@ O workflow faz:
 3. Aguarda aprovacao no environment `production`.
 4. Cria/configura o bucket se ainda nao existir.
 5. Substitui no bucket os arquivos da versao mais nova.
+6. O workflow de deploy do frontend passa a embutir automaticamente a URL publica desse instalador no botao **Baixar .exe** da tela administrativa.
 
 Por padrao, o bucket sera `${GCP_PROJECT_ID}-caixa-total-desktop`. Para usar outro nome, configure `GCS_DESKTOP_BUCKET` como **Repository variable** no GitHub.
 
 Permissoes necessarias para a service account do secret `GCP_SA_KEY`:
 
-- `roles/storage.admin` no projeto ou no bucket desktop.
+- `roles/storage.admin` no **projeto** se o workflow tambem for criar/configurar o bucket automaticamente.
+- Se o bucket ja existir e a automacao apenas publicar arquivos, o acesso pode ser restrito ao bucket desktop.
 - As permissoes ja usadas nos deploys atuais continuam iguais.
 
 Se preferir criar o bucket localmente antes do primeiro deploy:
