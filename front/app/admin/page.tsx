@@ -44,8 +44,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, Store as StoreIcon } from "lucide-react";
+import { Download, MonitorDown, Pencil, Plus, Printer, Store as StoreIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
+const DESKTOP_INSTALLER_URL =
+  process.env.NEXT_PUBLIC_DESKTOP_INSTALLER_URL || "/downloads/caixa-total-windows-x64.exe";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -170,6 +173,35 @@ export default function AdminPage() {
           Cadastre lojas e usuários de acesso por loja.
         </p>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <MonitorDown className="size-5" />
+              Aplicativo Windows
+            </CardTitle>
+            <CardDescription>
+              Baixe o instalador .exe para usar a impressao automatica apos cadastrar uma venda.
+            </CardDescription>
+          </div>
+          <Button asChild>
+            <a href={DESKTOP_INSTALLER_URL} download>
+              <Download className="size-4" />
+              Baixar .exe
+            </a>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+            <Printer className="mt-0.5 size-4 shrink-0" />
+            <p>
+              No instalador, avance pelas etapas e confirme a pasta de destino. O padrao fica em
+              Arquivos de Programas, com opcao de escolher outro local antes de instalar.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

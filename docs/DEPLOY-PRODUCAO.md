@@ -110,6 +110,12 @@ Configurar em: **Repositório → Settings → Secrets and variables → Actions
 
 **Formato de `BACKEND_URL`:** use a URL **HTTPS** do Cloud Run do backend, **sem** path e **sem** `/` final (o código do front concatena paths como `/sync`).
 
+Variáveis opcionais em **Settings → Secrets and variables → Actions → Variables**:
+
+| Variable | Obrigatória | Descrição | Exemplo |
+|----------|:-----------:|-----------|---------|
+| `GCS_DESKTOP_BUCKET` | Não | Bucket público usado para o instalador Windows. Se omitir, os workflows usam `${GCP_PROJECT_ID}-caixa-total-desktop`. | `caixa-total-desktop` |
+
 Variáveis **fixas nos workflows** (ajuste só se mudar infra):
 
 - `REGION`: `us-central1`
@@ -129,6 +135,7 @@ Roles usuais no **projeto**:
 - `roles/run.admin` — deploy e atualização de serviços Cloud Run
 - `roles/artifactregistry.writer` — push de imagens
 - `roles/iam.serviceAccountUser` — permitir que o deploy use a identidade de runtime do Cloud Run quando necessário
+- `roles/storage.admin` — necessário se o workflow também criar/configurar o bucket desktop automaticamente
 
 Se a organização bloquear **criação de chaves JSON** (`constraints/iam.disableServiceAccountKeyCreation`), é preciso relaxar a política no projeto/organização ou migrar para **Workload Identity Federation** (sem chave; mudaria o workflow).
 
@@ -204,9 +211,12 @@ Next.js **export estático** (`output: "export"` em `front/next.config.mjs`): tu
 | Variável | Obrigatória no CI | Descrição | Exemplo |
 |----------|:-----------------:|-----------|---------|
 | `NEXT_PUBLIC_API_URL` | Sim | URL da API | mesmo valor que `BACKEND_URL` no secret |
+| `NEXT_PUBLIC_DESKTOP_INSTALLER_URL` | Automática no workflow | URL pública do instalador exibida na tela admin | `https://storage.googleapis.com/caixa-total-desktop/downloads/caixa-total-windows-x64.exe` |
 | `NEXT_PUBLIC_READ_ONLY` | Não | Força modo somente leitura em algumas telas | `true` / omitir |
 
-Após mudar a URL da API, é necessário **novo build** do front (nova tag `front-v*`).
+O workflow `deploy-front.yml` resolve `NEXT_PUBLIC_DESKTOP_INSTALLER_URL` a partir da variable `GCS_DESKTOP_BUCKET` (ou do padrão `${GCP_PROJECT_ID}-caixa-total-desktop`).
+
+Após mudar a URL da API ou do bucket desktop, é necessário **novo build** do front (nova tag `front-v*`).
 
 ---
 

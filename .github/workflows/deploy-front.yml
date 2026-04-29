@@ -41,10 +41,22 @@ jobs:
         working-directory: front
         run: pnpm install --frozen-lockfile
 
+      - name: Resolve desktop installer URL
+        id: desktop_bucket
+        shell: bash
+        run: |
+          BUCKET="${{ vars.GCS_DESKTOP_BUCKET }}"
+          if [ -z "${BUCKET}" ]; then
+            BUCKET="${PROJECT_ID}-caixa-total-desktop"
+          fi
+          echo "bucket=${BUCKET}" >> "${GITHUB_OUTPUT}"
+          echo "installer_url=https://storage.googleapis.com/${BUCKET}/downloads/caixa-total-windows-x64.exe" >> "${GITHUB_OUTPUT}"
+
       - name: Build Next.js
         working-directory: front
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.BACKEND_URL }}
+          NEXT_PUBLIC_DESKTOP_INSTALLER_URL: ${{ steps.desktop_bucket.outputs.installer_url }}
         run: pnpm build
 
       - name: Authenticate to GCP
