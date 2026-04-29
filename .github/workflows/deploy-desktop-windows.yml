@@ -62,9 +62,22 @@ jobs:
           $version = node -p "require('./package.json').version"
           "version=$version" >> $env:GITHUB_OUTPUT
 
+      - name: Validate production backend URL
+        shell: pwsh
+        env:
+          DESKTOP_API_URL: ${{ secrets.BACKEND_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:DESKTOP_API_URL)) {
+            throw "Defina o secret BACKEND_URL com a URL publica do backend de producao antes de gerar o desktop Windows."
+          }
+          if ($env:DESKTOP_API_URL -match "/api/?$") {
+            throw "O secret BACKEND_URL deve ser a URL base do backend, sem /api no final."
+          }
+
       - name: Build Windows installer
         working-directory: front
         env:
+          DESKTOP_API_URL: ${{ secrets.BACKEND_URL }}
           DESKTOP_UPDATE_BASE_URL: ${{ steps.bucket.outputs.public_base_url }}
           NEXT_PUBLIC_DESKTOP_INSTALLER_URL: ${{ steps.bucket.outputs.public_base_url }}/downloads/${{ env.INSTALLER_NAME }}
         run: pnpm dist:win

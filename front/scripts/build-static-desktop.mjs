@@ -2,10 +2,12 @@ import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { runCommand } from "./run-command.mjs"
 import { writeDesktopUpdateConfig } from "./desktop-update-config.mjs"
+import { writeDesktopRuntimeConfig } from "./desktop-runtime-config.mjs"
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)))
 
 writeDesktopUpdateConfig(rootDir)
+writeDesktopRuntimeConfig(rootDir)
 
 await runCommand("pnpm", ["exec", "next", "build"], {
   cwd: rootDir,

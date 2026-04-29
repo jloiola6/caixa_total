@@ -563,12 +563,14 @@ Para criar/configurar apenas o bucket antes do primeiro instalador, rode **GitHu
 
 O workflow faz:
 
-1. Gera o instalador Windows em runner `windows-latest`.
+1. Valida o secret `BACKEND_URL` e gera o instalador Windows em runner `windows-latest`, embutindo essa URL como backend de producao do desktop.
 2. Salva o `.exe`, `.blockmap` e `latest.json` como artifact.
 3. Aguarda aprovacao no environment `production`.
 4. Cria/configura o bucket se ainda nao existir.
 5. Substitui no bucket os arquivos da versao mais nova.
 6. O workflow de deploy do frontend passa a embutir automaticamente a URL publica desse instalador no botao **Baixar .exe** da tela administrativa.
+
+Antes de rodar o workflow, confirme que o secret `BACKEND_URL` existe no GitHub e aponta para a URL base publica do backend de producao, sem `/api` no final.
 
 Por padrao, o bucket sera `${GCP_PROJECT_ID}-caixa-total-desktop`. Para usar outro nome, configure `GCS_DESKTOP_BUCKET` como **Repository variable** no GitHub.
 

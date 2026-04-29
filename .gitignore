@@ -13,6 +13,7 @@ out/
 front/out/
 front/dist-desktop/
 front/desktop-update-config.json
+front/desktop-runtime-config.json
 front/public/downloads/
 front/public/desktop/latest.json
 front/*.AppImage

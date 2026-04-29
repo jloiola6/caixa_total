@@ -104,7 +104,8 @@
       "electron/**/*",
       "out/**/*",
       "package.json",
-      "desktop-update-config.json"
+      "desktop-update-config.json",
+      "desktop-runtime-config.json"
     ],
     "linux": {
       "target": [

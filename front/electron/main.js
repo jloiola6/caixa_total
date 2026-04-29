@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const { execFile } = require("child_process");
 const fs = require("fs");
 const http = require("http");
@@ -6,10 +6,11 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 
-const isDev = process.env.NODE_ENV !== "production";
+const isDev = !app.isPackaged && process.env.NODE_ENV !== "production";
 const outDir = path.join(__dirname, "..", "out");
 const outIndex = path.join(outDir, "index.html");
 const desktopUpdateConfigPath = path.join(__dirname, "..", "desktop-update-config.json");
+const desktopRuntimeConfigPath = path.join(__dirname, "..", "desktop-runtime-config.json");
 const fsPromises = fs.promises;
 const normalizeDesktopApiBaseUrl = (url) =>
   url
@@ -18,6 +19,7 @@ const normalizeDesktopApiBaseUrl = (url) =>
     .replace(/\/api$/i, "");
 const desktopApiUrlRaw =
   process.env.DESKTOP_API_URL ||
+  readDesktopRuntimeConfig().apiBaseUrl ||
   "http://localhost:4000";
 const desktopApiBaseUrl = normalizeDesktopApiBaseUrl(
   desktopApiUrlRaw,
@@ -36,6 +38,7 @@ if (process.platform === "linux") {
 
 let staticServer = null;
 let staticServerUrl = null;
+let mainWindow = null;
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -89,6 +92,23 @@ function readDesktopUpdateConfig() {
   } catch (error) {
     debugLog(`Falha ao ler config de update: ${errorMessage(error, "erro desconhecido")}`);
     return { latestUrl: "" };
+  }
+}
+
+function readDesktopRuntimeConfig() {
+  try {
+    if (!fs.existsSync(desktopRuntimeConfigPath)) return { apiBaseUrl: "" };
+    const raw = fs.readFileSync(desktopRuntimeConfigPath, "utf8");
+    const parsed = JSON.parse(raw);
+    return {
+      apiBaseUrl:
+        typeof parsed.apiBaseUrl === "string"
+          ? normalizeDesktopApiBaseUrl(parsed.apiBaseUrl)
+          : "",
+    };
+  } catch (error) {
+    debugLog(`Falha ao ler config desktop: ${errorMessage(error, "erro desconhecido")}`);
+    return { apiBaseUrl: "" };
   }
 }
 
@@ -716,16 +736,24 @@ ipcMain.handle("desktop:list-printers", async () => {
 });
 
 async function createWindow() {
+  Menu.setApplicationMenu(null);
+
   const preloadPath = path.join(__dirname, "preload.js");
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: preloadPath,
       sandbox: false,
     },
+  });
+  mainWindow.setMenu(null);
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 
   const loadUrl = isDev
