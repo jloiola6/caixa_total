@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { execFile } = require("child_process");
 const fs = require("fs");
 const http = require("http");
@@ -9,6 +9,7 @@ const path = require("path");
 const isDev = process.env.NODE_ENV !== "production";
 const outDir = path.join(__dirname, "..", "out");
 const outIndex = path.join(outDir, "index.html");
+const desktopUpdateConfigPath = path.join(__dirname, "..", "desktop-update-config.json");
 const fsPromises = fs.promises;
 const normalizeDesktopApiBaseUrl = (url) =>
   url
@@ -26,6 +27,7 @@ const debugRoute = "/__desktop_debug";
 const isDesktopDebug = process.env.DESKTOP_DEBUG === "1";
 const desktopServerPort = Number(process.env.DESKTOP_SERVER_PORT ?? 0);
 const preferredPrinterName = (process.env.DESKTOP_PRINTER_NAME || "").trim();
+const updateCheckDelayMs = 10000;
 
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("no-sandbox");
@@ -74,6 +76,83 @@ function debugLog(message) {
 function errorMessage(error, fallback) {
   if (error instanceof Error && error.message) return error.message;
   return fallback;
+}
+
+function readDesktopUpdateConfig() {
+  try {
+    if (!fs.existsSync(desktopUpdateConfigPath)) return { latestUrl: "" };
+    const raw = fs.readFileSync(desktopUpdateConfigPath, "utf8");
+    const parsed = JSON.parse(raw);
+    return {
+      latestUrl: typeof parsed.latestUrl === "string" ? parsed.latestUrl.trim() : "",
+    };
+  } catch (error) {
+    debugLog(`Falha ao ler config de update: ${errorMessage(error, "erro desconhecido")}`);
+    return { latestUrl: "" };
+  }
+}
+
+function compareSemver(a, b) {
+  const parse = (value) =>
+    String(value || "")
+      .split(".")
+      .map((part) => Number.parseInt(part, 10))
+      .map((part) => (Number.isFinite(part) ? part : 0));
+  const left = parse(a);
+  const right = parse(b);
+  const length = Math.max(left.length, right.length, 3);
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = left[index] || 0;
+    const rightPart = right[index] || 0;
+    if (leftPart > rightPart) return 1;
+    if (leftPart < rightPart) return -1;
+  }
+  return 0;
+}
+
+async function checkForDesktopUpdate(mainWindow) {
+  if (isDev) return;
+
+  const { latestUrl } = readDesktopUpdateConfig();
+  if (!latestUrl) {
+    debugLog("Update desktop sem latestUrl configurado");
+    return;
+  }
+
+  try {
+    const response = await fetch(`${latestUrl}?t=${Date.now()}`, {
+      method: "GET",
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      debugLog(`Update desktop retornou HTTP ${response.status}`);
+      return;
+    }
+
+    const latest = await response.json();
+    const latestVersion = typeof latest.version === "string" ? latest.version.trim() : "";
+    const installerUrl =
+      typeof latest.installerUrl === "string" ? latest.installerUrl.trim() : "";
+    if (!latestVersion || !installerUrl) return;
+    if (compareSemver(latestVersion, app.getVersion()) <= 0) return;
+
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: "info",
+      buttons: ["Baixar agora", "Depois"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Atualizacao disponivel",
+      message: `Caixa Total ${latestVersion} esta disponivel`,
+      detail:
+        "Baixe e instale a nova versao para receber as melhorias mais recentes do aplicativo desktop.",
+    });
+
+    if (result.response === 0) {
+      await shell.openExternal(installerUrl);
+    }
+  } catch (error) {
+    debugLog(`Falha ao verificar update desktop: ${errorMessage(error, "erro desconhecido")}`);
+  }
 }
 
 function runExecFile(command, args) {
@@ -524,6 +603,14 @@ async function createWindow() {
 
   if (isDev || isDesktopDebug) {
     mainWindow.webContents.openDevTools();
+  }
+
+  if (!isDev) {
+    setTimeout(() => {
+      checkForDesktopUpdate(mainWindow).catch((error) => {
+        debugLog(`Erro inesperado no update desktop: ${errorMessage(error, "erro desconhecido")}`);
+      });
+    }, updateCheckDelayMs);
   }
 }
 

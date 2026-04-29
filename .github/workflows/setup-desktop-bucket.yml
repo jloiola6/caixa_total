@@ -1,0 +1,51 @@
+name: Setup Desktop Bucket
+
+on:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCS_DESKTOP_REGION: us-central1
+
+jobs:
+  setup_bucket:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve bucket
+        id: bucket
+        run: |
+          BUCKET="${{ vars.GCS_DESKTOP_BUCKET }}"
+          if [ -z "${BUCKET}" ]; then
+            BUCKET="${PROJECT_ID}-caixa-total-desktop"
+          fi
+          echo "bucket=${BUCKET}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create/configure desktop bucket
+        working-directory: front
+        env:
+          GCP_PROJECT_ID: ${{ env.PROJECT_ID }}
+          GCS_DESKTOP_BUCKET: ${{ steps.bucket.outputs.bucket }}
+          GCS_DESKTOP_REGION: ${{ env.GCS_DESKTOP_REGION }}
+        run: bash scripts/setup-gcs-desktop-bucket.sh
+
+      - name: Summary
+        run: |
+          echo "Bucket desktop pronto:"
+          echo "https://storage.googleapis.com/${{ steps.bucket.outputs.bucket }}/downloads/caixa-total-windows-x64.exe"
+          echo "https://storage.googleapis.com/${{ steps.bucket.outputs.bucket }}/desktop/latest.json"

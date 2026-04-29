@@ -12,6 +12,9 @@ node_modules/
 out/
 front/out/
 front/dist-desktop/
+front/desktop-update-config.json
+front/public/downloads/
+front/public/desktop/latest.json
 front/*.AppImage
 front/.cache/
 front/.home/

@@ -9,12 +9,13 @@
     "start": "next start",
     "lint": "eslint .",
     "electron": "NODE_ENV=development env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-setuid-sandbox",
-    "build:static:desktop": "NODE_ENV=production NEXT_PUBLIC_API_URL=/api next build",
+    "build:static:desktop": "node scripts/build-static-desktop.mjs",
     "build:desktop": "pnpm build:static:desktop && NODE_ENV=production env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-setuid-sandbox",
     "desktop:debug": "pnpm build:static:desktop && DESKTOP_DEBUG=1 NODE_ENV=production env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-setuid-sandbox",
     "desktop:debug:run": "DESKTOP_DEBUG=1 NODE_ENV=production env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-setuid-sandbox",
     "dist:linux": "pnpm build:static:desktop && electron-builder --linux AppImage",
-    "dist:win": "pnpm build:static:desktop && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64",
+    "dist:win": "node scripts/dist-win.mjs",
+    "publish:win:gcs": "node scripts/publish-windows-installer-gcs.mjs",
     "android:emulator": "npx cap run android",
     "android:device": "npx cap run android",
     "cap:sync": "npx cap sync"
@@ -102,7 +103,8 @@
     "files": [
       "electron/**/*",
       "out/**/*",
-      "package.json"
+      "package.json",
+      "desktop-update-config.json"
     ],
     "linux": {
       "target": [
@@ -114,7 +116,15 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "caixa-total-${version}-windows-${arch}.${ext}"
+      "artifactName": "caixa-total-windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Caixa Total"
     },
     "artifactName": "caixa-total-${version}-${os}-${arch}.${ext}"
   }

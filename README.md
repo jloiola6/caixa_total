@@ -199,6 +199,7 @@ Com os secrets configurados no GitHub (`GCP_PROJECT_ID`, `GCP_SA_KEY`, `BACKEND_
 |-----|----------------|
 | `back-v1.0.1` | Backend → imagem `back:1.0.1` + deploy `caixa-total-back` |
 | `front-v1.0.1` | Frontend → build com `NEXT_PUBLIC_API_URL` + imagem `front:1.0.1` + deploy `caixa-total-front` |
+| `desktop-v1.0.1` | Desktop Windows → instalador `.exe` + upload para GCS |
 
 ```bash
 git tag back-v1.0.2
@@ -523,6 +524,64 @@ pnpm dist:win
 ```
 
 Saída padrão: `front/dist-desktop/`.
+
+O comando tambem copia o instalador Windows para:
+
+- `front/public/downloads/caixa-total-windows-x64.exe`
+- `front/out/downloads/caixa-total-windows-x64.exe`
+
+Esse e o caminho usado pelo botao **Baixar .exe** na tela administrativa. Se o instalador ficar hospedado em outro lugar, defina `NEXT_PUBLIC_DESKTOP_INSTALLER_URL` no build do frontend.
+
+Para hospedar a versao mais recente em um bucket publico do Google Cloud Storage:
+
+```bash
+cd front
+$env:DESKTOP_UPDATE_BASE_URL="https://storage.googleapis.com/SEU_BUCKET"
+$env:NEXT_PUBLIC_DESKTOP_INSTALLER_URL="https://storage.googleapis.com/SEU_BUCKET/downloads/caixa-total-windows-x64.exe"
+$env:GCS_DESKTOP_BUCKET="SEU_BUCKET"
+pnpm dist:win
+pnpm publish:win:gcs
+```
+
+O upload publica:
+
+- `downloads/caixa-total-windows-x64.exe` - usado pelo botao de download.
+- `desktop/latest.json` - usado pelo app desktop instalado para avisar quando houver versao nova.
+
+Para cada nova versao desktop, aumente `version` em `front/package.json`, rode os comandos acima e publique novamente no bucket. O app desktop verifica `desktop/latest.json` ao abrir e oferece baixar o instalador novo quando a versao do bucket for maior.
+
+### Deploy desktop Windows com aprovacao
+
+O workflow `.github/workflows/deploy-desktop-windows.yml` publica o instalador no GCS apos aprovacao manual no environment `production`.
+
+Gatilhos:
+
+- Tag `desktop-v*`, por exemplo `desktop-v1.0.24`.
+- Execucao manual em **GitHub Actions > Deploy Desktop Windows > Run workflow**.
+
+Para criar/configurar apenas o bucket antes do primeiro instalador, rode **GitHub Actions > Setup Desktop Bucket > Run workflow**. Esse workflow tambem exige aprovacao no environment `production`.
+
+O workflow faz:
+
+1. Gera o instalador Windows em runner `windows-latest`.
+2. Salva o `.exe`, `.blockmap` e `latest.json` como artifact.
+3. Aguarda aprovacao no environment `production`.
+4. Cria/configura o bucket se ainda nao existir.
+5. Substitui no bucket os arquivos da versao mais nova.
+
+Por padrao, o bucket sera `${GCP_PROJECT_ID}-caixa-total-desktop`. Para usar outro nome, configure `GCS_DESKTOP_BUCKET` como **Repository variable** no GitHub.
+
+Permissoes necessarias para a service account do secret `GCP_SA_KEY`:
+
+- `roles/storage.admin` no projeto ou no bucket desktop.
+- As permissoes ja usadas nos deploys atuais continuam iguais.
+
+Se preferir criar o bucket localmente antes do primeiro deploy:
+
+```bash
+cd front
+GCP_PROJECT_ID=SEU_PROJETO GCS_DESKTOP_BUCKET=SEU_BUCKET bash scripts/setup-gcs-desktop-bucket.sh
+```
 
 Para trocar o backend do desktop sem alterar código:
 

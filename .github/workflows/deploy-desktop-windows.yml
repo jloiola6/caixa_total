@@ -1,0 +1,138 @@
+name: Deploy Desktop Windows
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCS_DESKTOP_REGION: us-central1
+  INSTALLER_NAME: caixa-total-windows-x64.exe
+
+jobs:
+  build_windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      bucket: ${{ steps.bucket.outputs.bucket }}
+      public_base_url: ${{ steps.bucket.outputs.public_base_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: front/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: front
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve bucket URL
+        id: bucket
+        shell: pwsh
+        run: |
+          $bucket = "${{ vars.GCS_DESKTOP_BUCKET }}"
+          if ([string]::IsNullOrWhiteSpace($bucket)) {
+            $bucket = "${{ env.PROJECT_ID }}-caixa-total-desktop"
+          }
+          $publicBaseUrl = "https://storage.googleapis.com/$bucket"
+          "bucket=$bucket" >> $env:GITHUB_OUTPUT
+          "public_base_url=$publicBaseUrl" >> $env:GITHUB_OUTPUT
+
+      - name: Resolve app version
+        id: version
+        shell: pwsh
+        working-directory: front
+        run: |
+          $version = node -p "require('./package.json').version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build Windows installer
+        working-directory: front
+        env:
+          DESKTOP_UPDATE_BASE_URL: ${{ steps.bucket.outputs.public_base_url }}
+          NEXT_PUBLIC_DESKTOP_INSTALLER_URL: ${{ steps.bucket.outputs.public_base_url }}/downloads/${{ env.INSTALLER_NAME }}
+        run: pnpm dist:win
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: caixa-total-desktop-windows
+          if-no-files-found: error
+          path: |
+            front/dist-desktop/${{ env.INSTALLER_NAME }}
+            front/dist-desktop/${{ env.INSTALLER_NAME }}.blockmap
+            front/public/desktop/latest.json
+
+  publish_gcs:
+    needs: build_windows
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: caixa-total-desktop-windows
+          path: desktop-artifacts
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Prepare desktop bucket
+        working-directory: front
+        env:
+          GCP_PROJECT_ID: ${{ env.PROJECT_ID }}
+          GCS_DESKTOP_BUCKET: ${{ needs.build_windows.outputs.bucket }}
+          GCS_DESKTOP_REGION: ${{ env.GCS_DESKTOP_REGION }}
+        run: bash scripts/setup-gcs-desktop-bucket.sh
+
+      - name: Publish latest Windows installer
+        env:
+          BUCKET: ${{ needs.build_windows.outputs.bucket }}
+        run: |
+          gcloud storage cp desktop-artifacts/dist-desktop/${{ env.INSTALLER_NAME }} \
+            gs://${BUCKET}/downloads/${{ env.INSTALLER_NAME }} \
+            --cache-control=no-cache \
+            --content-type=application/vnd.microsoft.portable-executable
+
+          gcloud storage cp desktop-artifacts/dist-desktop/${{ env.INSTALLER_NAME }}.blockmap \
+            gs://${BUCKET}/downloads/${{ env.INSTALLER_NAME }}.blockmap \
+            --cache-control=no-cache \
+            --content-type=application/octet-stream
+
+          gcloud storage cp desktop-artifacts/public/desktop/latest.json \
+            gs://${BUCKET}/desktop/latest.json \
+            --cache-control=no-cache \
+            --content-type=application/json
+
+      - name: Summary
+        run: |
+          echo "Windows desktop publicado:"
+          echo "${{ needs.build_windows.outputs.public_base_url }}/downloads/${{ env.INSTALLER_NAME }}"
+          echo "${{ needs.build_windows.outputs.public_base_url }}/desktop/latest.json"
