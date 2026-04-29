@@ -197,20 +197,6 @@ function htmlToPlainText(html) {
     .trim();
 }
 
-function parsePrinterNamesFromLpstat(output) {
-  return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("printer "))
-    .map((line) => line.split(/\s+/)[1])
-    .filter(Boolean);
-}
-
-function parseDefaultPrinterFromLpstat(output) {
-  const match = output.match(/destination:\s*([^\s]+)/i);
-  return match ? match[1] : "";
-}
-
 function normalizePrintOptions(rawOptions) {
   if (!rawOptions || typeof rawOptions !== "object") {
     return {
@@ -236,21 +222,40 @@ function normalizePrintOptions(rawOptions) {
   return { connectionType, localPrinterName, wifiHost, wifiPort, cutAfterPrint };
 }
 
+function getPrinterSourceWindow() {
+  return (
+    BrowserWindow.getFocusedWindow() ||
+    BrowserWindow.getAllWindows().find((window) => !window.isDestroyed()) ||
+    null
+  );
+}
+
 async function listLocalPrinters() {
   try {
-    const printersOut = await runExecFile("lpstat", ["-p"]);
-    let defaultName = "";
-    try {
-      const defaultOut = await runExecFile("lpstat", ["-d"]);
-      defaultName = parseDefaultPrinterFromLpstat(defaultOut.stdout || "");
-    } catch {
-      defaultName = "";
+    const printerWindow = getPrinterSourceWindow();
+    if (!printerWindow) {
+      return {
+        ok: false,
+        printers: [],
+        error: "Janela desktop indisponivel para consultar impressoras",
+      };
     }
 
-    const names = parsePrinterNamesFromLpstat(printersOut.stdout || "");
+    const printers = await printerWindow.webContents.getPrintersAsync();
     return {
       ok: true,
-      printers: names.map((name) => ({ name, isDefault: name === defaultName })),
+      printers: printers
+        .filter((printer) => typeof printer.name === "string" && printer.name.trim() !== "")
+        .map((printer) => ({
+          name: printer.name.trim(),
+          isDefault: printer.isDefault === true,
+        }))
+        .sort((left, right) => {
+          if (left.isDefault !== right.isDefault) {
+            return left.isDefault ? -1 : 1;
+          }
+          return left.name.localeCompare(right.name, "pt-BR");
+        }),
     };
   } catch (error) {
     return {
@@ -273,6 +278,128 @@ function buildPrintPayload(text, cutAfterPrint) {
   const normalizedText = text.replace(/\r?\n/g, "\r\n");
   const basePayload = Buffer.from(normalizedText, "utf8");
   return cutAfterPrint ? appendCutCommand(basePayload) : basePayload;
+}
+
+function toPowerShellSingleQuoted(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+async function printTextOnWindows(filePath, printerName) {
+  const command = `
+$ErrorActionPreference = 'Stop'
+$printerName = ${toPowerShellSingleQuoted(printerName)}
+$filePath = ${toPowerShellSingleQuoted(filePath)}
+Add-Type -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class RawPrinterHelper {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DOCINFOW {
+    [MarshalAs(UnmanagedType.LPWStr)]
+    public string pDocName;
+    [MarshalAs(UnmanagedType.LPWStr)]
+    public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)]
+    public string pDataType;
+  }
+
+  [DllImport("winspool.Drv", EntryPoint = "OpenPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
+  public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+
+  [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
+  public static extern int StartDocPrinter(IntPtr hPrinter, int level, [In] DOCINFOW di);
+
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool ClosePrinter(IntPtr hPrinter);
+
+  [DllImport("winspool.Drv", SetLastError = true)]
+  public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+  private static void ThrowLastWin32(string step) {
+    throw new Win32Exception(Marshal.GetLastWin32Error(), step);
+  }
+
+  public static void SendBytes(string printerName, byte[] bytes) {
+    IntPtr printerHandle = IntPtr.Zero;
+    IntPtr unmanagedBytes = IntPtr.Zero;
+    bool docStarted = false;
+    bool pageStarted = false;
+
+    try {
+      if (!OpenPrinter(printerName, out printerHandle, IntPtr.Zero)) {
+        ThrowLastWin32("Falha ao abrir a impressora");
+      }
+
+      var docInfo = new DOCINFOW {
+        pDocName = "Caixa Total",
+        pDataType = "RAW"
+      };
+
+      if (StartDocPrinter(printerHandle, 1, docInfo) <= 0) {
+        ThrowLastWin32("Falha ao iniciar o spool");
+      }
+      docStarted = true;
+
+      if (!StartPagePrinter(printerHandle)) {
+        ThrowLastWin32("Falha ao iniciar a pagina");
+      }
+      pageStarted = true;
+
+      unmanagedBytes = Marshal.AllocCoTaskMem(bytes.Length);
+      Marshal.Copy(bytes, 0, unmanagedBytes, bytes.Length);
+
+      int bytesWritten = 0;
+      if (!WritePrinter(printerHandle, unmanagedBytes, bytes.Length, out bytesWritten)) {
+        ThrowLastWin32("Falha ao enviar dados para a impressora");
+      }
+      if (bytesWritten != bytes.Length) {
+        throw new InvalidOperationException("Nem todos os bytes foram enviados para a impressora.");
+      }
+    } finally {
+      if (unmanagedBytes != IntPtr.Zero) {
+        Marshal.FreeCoTaskMem(unmanagedBytes);
+      }
+      if (pageStarted) {
+        EndPagePrinter(printerHandle);
+      }
+      if (docStarted) {
+        EndDocPrinter(printerHandle);
+      }
+      if (printerHandle != IntPtr.Zero) {
+        ClosePrinter(printerHandle);
+      }
+    }
+  }
+}
+"@
+
+$bytes = [System.IO.File]::ReadAllBytes($filePath)
+if ($bytes.Length -eq 0) {
+  throw "Arquivo de impressao vazio."
+}
+[RawPrinterHelper]::SendBytes($printerName, $bytes)
+`;
+
+  const encodedCommand = Buffer.from(command, "utf16le").toString("base64");
+  await runExecFile("powershell.exe", [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-EncodedCommand",
+    encodedCommand,
+  ]);
 }
 
 async function printTextOverWifi(payload, host, port) {
@@ -533,11 +660,12 @@ async function printTextSilently(text, rawOptions) {
 
     let printerName = options.localPrinterName || preferredPrinterName;
     if (!printerName) {
-      try {
-        const defaultOut = await runExecFile("lpstat", ["-d"]);
-        printerName = parseDefaultPrinterFromLpstat(defaultOut.stdout || "");
-      } catch {
-        printerName = "";
+      const availablePrinters = await listLocalPrinters();
+      if (availablePrinters.ok) {
+        printerName =
+          availablePrinters.printers.find((printer) => printer.isDefault)?.name ||
+          availablePrinters.printers[0]?.name ||
+          "";
       }
     }
     if (!printerName) {
@@ -550,6 +678,11 @@ async function printTextSilently(text, rawOptions) {
     const args = [];
     args.push("-d", printerName);
     args.push("-o", "raw", filePath);
+
+    if (process.platform === "win32") {
+      await printTextOnWindows(filePath, printerName);
+      return { ok: true };
+    }
 
     await runExecFile("lp", args);
     return { ok: true };

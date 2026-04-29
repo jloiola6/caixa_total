@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useId, useMemo, useState } from "react"
 import { RefreshCw, Save, Printer, Wifi, Cable, TestTube2, CloudOff, ExternalLink, Store, CopyCheckIcon, CopyIcon, Smartphone } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -53,6 +53,7 @@ function parseThresholdInput(value: string): number | null {
 
 export default function ConfiguracoesPage() {
   const { user, applyStoreSettings, refreshUser } = useAuth()
+  const printerOptionsListId = useId()
 
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(false)
   const [connectionType, setConnectionType] = useState<"local" | "wifi">("local")
@@ -65,6 +66,7 @@ export default function ConfiguracoesPage() {
   const [headerText, setHeaderText] = useState("")
   const [footerText, setFooterText] = useState("")
 
+  const [isDesktop, setIsDesktop] = useState(false)
   const [loadingPrinters, setLoadingPrinters] = useState(false)
   const [installedPrinters, setInstalledPrinters] = useState<InstalledPrinter[]>([])
 
@@ -90,12 +92,15 @@ export default function ConfiguracoesPage() {
     String(DEFAULT_STOCK_ALERT_THRESHOLDS.inStock)
   )
 
-  const isDesktop = typeof window !== "undefined" && Boolean(window.caixaDesktop)
   const isSuperAdmin = user?.role === "SUPER_ADMIN"
   const storeMobileNavItems = useMemo(
     () => getStoreUserNavItems(user?.store?.financeModuleEnabled !== false),
     [user?.store?.financeModuleEnabled]
   )
+
+  useEffect(() => {
+    setIsDesktop(Boolean(window.caixaDesktop?.listPrinters))
+  }, [])
 
   useEffect(() => {
     const settings = getPrinterSettings()
@@ -127,7 +132,11 @@ export default function ConfiguracoesPage() {
       }
       const printers = response.printers ?? []
       setInstalledPrinters(printers)
-      if (!localPrinterName.trim()) {
+      const currentPrinterName = localPrinterName.trim()
+      const currentPrinterStillAvailable = printers.some(
+        (printer) => printer.name === currentPrinterName
+      )
+      if (!currentPrinterName || !currentPrinterStillAvailable) {
         const preferred = printers.find((printer) => printer.isDefault) ?? printers[0]
         if (preferred?.name) setLocalPrinterName(preferred.name)
       }
@@ -140,9 +149,9 @@ export default function ConfiguracoesPage() {
   }
 
   useEffect(() => {
-    if (!isDesktop) return
+    if (!isDesktop || connectionType !== "local") return
     void loadInstalledPrinters()
-  }, [isDesktop])
+  }, [connectionType, isDesktop])
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -458,7 +467,9 @@ export default function ConfiguracoesPage() {
         <p className="text-sm text-muted-foreground">
           {isSuperAdmin
             ? "Defina as politicas de operacao por loja."
-            : "Defina as configuracoes da loja e como os comprovantes devem ser impressos."}
+            : isDesktop
+              ? "Defina as configuracoes da loja e como os comprovantes devem ser impressos."
+              : "Defina as configuracoes da loja."}
         </p>
       </div>
 
@@ -808,7 +819,7 @@ export default function ConfiguracoesPage() {
         </Card>
       )}
 
-      {!isSuperAdmin && (
+      {!isSuperAdmin && isDesktop && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -919,56 +930,50 @@ export default function ConfiguracoesPage() {
                 </Select>
               </div>
 
-              {connectionType === "local" && isDesktop && (
-                <div className="space-y-1.5">
-                  <Label>Impressora detectada</Label>
-                  <div className="flex gap-2">
-                    <Select value={localPrinterName || undefined} onValueChange={setLocalPrinterName}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Selecione" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {installedPrinters.length === 0 ? (
-                          <SelectItem value="__empty__" disabled>
-                            Nenhuma impressora detectada
-                          </SelectItem>
-                        ) : (
-                          installedPrinters.map((printer) => (
-                            <SelectItem key={printer.name} value={printer.name}>
-                              {printer.name}
-                              {printer.isDefault ? " (padrao)" : ""}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => void loadInstalledPrinters()}
-                      disabled={loadingPrinters}
-                      title="Atualizar lista de impressoras"
-                    >
-                      <RefreshCw className={`size-4 ${loadingPrinters ? "animate-spin" : ""}`} />
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
 
             {connectionType === "local" && (
               <div className="space-y-1.5">
                 <Label htmlFor="printer-local-name">Nome da impressora local</Label>
-                <Input
-                  id="printer-local-name"
-                  value={localPrinterName}
-                  onChange={(event) => setLocalPrinterName(event.target.value)}
-                  placeholder="Ex.: IDPRINT"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="printer-local-name"
+                    value={localPrinterName}
+                    onChange={(event) => setLocalPrinterName(event.target.value)}
+                    placeholder={
+                      loadingPrinters
+                        ? "Consultando impressoras conectadas..."
+                        : "Selecione ou digite o nome da impressora"
+                    }
+                    list={printerOptionsListId}
+                    autoComplete="off"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => void loadInstalledPrinters()}
+                    disabled={loadingPrinters}
+                    title="Atualizar lista de impressoras"
+                  >
+                    <RefreshCw className={`size-4 ${loadingPrinters ? "animate-spin" : ""}`} />
+                  </Button>
+                </div>
+                <datalist id={printerOptionsListId}>
+                  {installedPrinters.map((printer) => (
+                    <option key={printer.name} value={printer.name}>
+                      {printer.isDefault ? `${printer.name} (padrao)` : printer.name}
+                    </option>
+                  ))}
+                </datalist>
                 <p className="text-xs text-muted-foreground">
-                  Em desktop, use o nome exato da fila CUPS. Exemplo: IDPRINT.
+                  O campo consulta as impressoras conectadas ao desktop e sugere os nomes encontrados.
                 </p>
+                {installedPrinters.length === 0 && !loadingPrinters && (
+                  <p className="text-xs text-amber-600">
+                    Nenhuma impressora local foi detectada nesta maquina no momento.
+                  </p>
+                )}
               </div>
             )}
 
