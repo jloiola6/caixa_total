@@ -5,6 +5,39 @@ import { resolveDesktopApiBaseUrl } from "./desktop-runtime-config.mjs"
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)))
 const desktopApiBaseUrl = resolveDesktopApiBaseUrl()
+const electronBuilderArgs = [
+  "exec",
+  "electron-builder",
+  "--win",
+  "nsis",
+  "--x64",
+  "--publish",
+  "never",
+]
+
+async function runElectronBuilderWithRetry() {
+  const maxAttempts = Number(process.env.ELECTRON_BUILDER_RETRIES ?? 3)
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await runCommand("pnpm", electronBuilderArgs, {
+        cwd: rootDir,
+        env: {
+          CSC_IDENTITY_AUTO_DISCOVERY: "false",
+        },
+      })
+      return
+    } catch (error) {
+      if (attempt >= maxAttempts) throw error
+
+      const delayMs = attempt * 15000
+      console.warn(
+        `electron-builder falhou na tentativa ${attempt}/${maxAttempts}. Tentando novamente em ${delayMs / 1000}s...`,
+      )
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+}
 
 if (!desktopApiBaseUrl) {
   throw new Error(
@@ -16,12 +49,7 @@ await runCommand("pnpm", ["build:static:desktop"], {
   cwd: rootDir,
 })
 
-await runCommand("pnpm", ["exec", "electron-builder", "--win", "nsis", "--x64"], {
-  cwd: rootDir,
-  env: {
-    CSC_IDENTITY_AUTO_DISCOVERY: "false",
-  },
-})
+await runElectronBuilderWithRetry()
 
 await runCommand("node", ["scripts/copy-windows-installer.mjs"], {
   cwd: rootDir,
