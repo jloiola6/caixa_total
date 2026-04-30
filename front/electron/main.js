@@ -30,6 +30,7 @@ const isDesktopDebug = process.env.DESKTOP_DEBUG === "1";
 const desktopServerPort = Number(process.env.DESKTOP_SERVER_PORT ?? 0);
 const preferredPrinterName = (process.env.DESKTOP_PRINTER_NAME || "").trim();
 const updateCheckDelayMs = 10000;
+const defaultWindowBounds = { width: 1280, height: 800 };
 
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("no-sandbox");
@@ -39,6 +40,7 @@ if (process.platform === "linux") {
 let staticServer = null;
 let staticServerUrl = null;
 let mainWindow = null;
+let windowBoundsSaveTimer = null;
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -110,6 +112,63 @@ function readDesktopRuntimeConfig() {
     debugLog(`Falha ao ler config desktop: ${errorMessage(error, "erro desconhecido")}`);
     return { apiBaseUrl: "" };
   }
+}
+
+function getDesktopIconPath() {
+  const candidates = [
+    path.join(__dirname, "..", "build", "icon.ico"),
+    path.join(__dirname, "..", "public", "icon-512x512.png"),
+    path.join(__dirname, "..", "out", "icon-512x512.png"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+function getWindowStatePath() {
+  return path.join(app.getPath("userData"), "window-state.json");
+}
+
+function readWindowState() {
+  try {
+    const raw = fs.readFileSync(getWindowStatePath(), "utf8");
+    const parsed = JSON.parse(raw);
+    const width = Number(parsed.width);
+    const height = Number(parsed.height);
+    const x = Number(parsed.x);
+    const y = Number(parsed.y);
+    return {
+      width: Number.isFinite(width) ? Math.max(900, Math.floor(width)) : defaultWindowBounds.width,
+      height: Number.isFinite(height) ? Math.max(640, Math.floor(height)) : defaultWindowBounds.height,
+      x: Number.isFinite(x) ? Math.floor(x) : undefined,
+      y: Number.isFinite(y) ? Math.floor(y) : undefined,
+      maximized: parsed.maximized === true,
+    };
+  } catch {
+    return { ...defaultWindowBounds, maximized: false };
+  }
+}
+
+function saveWindowState(window) {
+  if (!window || window.isDestroyed()) return;
+  const bounds = window.isMaximized() ? window.getNormalBounds() : window.getBounds();
+  const state = {
+    ...bounds,
+    maximized: window.isMaximized(),
+  };
+  fs.writeFileSync(getWindowStatePath(), JSON.stringify(state, null, 2));
+}
+
+function scheduleWindowStateSave(window) {
+  if (windowBoundsSaveTimer) {
+    clearTimeout(windowBoundsSaveTimer);
+  }
+  windowBoundsSaveTimer = setTimeout(() => {
+    windowBoundsSaveTimer = null;
+    try {
+      saveWindowState(window);
+    } catch (error) {
+      debugLog(`Falha ao salvar tamanho da janela: ${errorMessage(error, "erro desconhecido")}`);
+    }
+  }, 250);
 }
 
 function compareSemver(a, b) {
@@ -739,10 +798,18 @@ async function createWindow() {
   Menu.setApplicationMenu(null);
 
   const preloadPath = path.join(__dirname, "preload.js");
+  const savedWindowState = readWindowState();
+  const iconPath = getDesktopIconPath();
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: savedWindowState.width,
+    height: savedWindowState.height,
+    x: savedWindowState.x,
+    y: savedWindowState.y,
+    minWidth: 900,
+    minHeight: 640,
+    resizable: true,
     autoHideMenuBar: true,
+    ...(iconPath ? { icon: iconPath } : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -750,8 +817,22 @@ async function createWindow() {
       sandbox: false,
     },
   });
+  if (savedWindowState.maximized) {
+    mainWindow.maximize();
+  }
   mainWindow.setMenu(null);
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.on("resize", () => scheduleWindowStateSave(mainWindow));
+  mainWindow.on("move", () => scheduleWindowStateSave(mainWindow));
+  mainWindow.on("maximize", () => scheduleWindowStateSave(mainWindow));
+  mainWindow.on("unmaximize", () => scheduleWindowStateSave(mainWindow));
+  mainWindow.on("close", () => {
+    try {
+      saveWindowState(mainWindow);
+    } catch (error) {
+      debugLog(`Falha ao salvar estado final da janela: ${errorMessage(error, "erro desconhecido")}`);
+    }
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });

@@ -11,7 +11,9 @@ import {
 import {
   getMe,
   login as authLogin,
+  getStoredAuthUser,
   setStoredToken,
+  setStoredAuthUser,
   setStoredStoreId,
   clearStoredToken,
   type AuthUser,
@@ -47,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(null);
       return;
     }
+    setStoredAuthUser(u);
     setStoredStoreId(u.storeId);
     if (u.storeId && typeof u.store?.offlineModeEnabled === "boolean") {
       setOfflineModeEnabledForStore(u.storeId, u.store.offlineModeEnabled);
@@ -60,17 +63,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     setToken(t);
+
+    const cachedUser = getStoredAuthUser();
+    if (cachedUser) {
+      setUser(cachedUser);
+      if (cachedUser.storeId) setStoredStoreId(cachedUser.storeId);
+      if (cachedUser.storeId && typeof cachedUser.store?.offlineModeEnabled === "boolean") {
+        setOfflineModeEnabledForStore(cachedUser.storeId, cachedUser.store.offlineModeEnabled);
+      }
+    }
+
     getMe()
       .then(async (u) => {
+        if (!u) {
+          clearStoredToken();
+          setToken(null);
+          setUser(null);
+          return;
+        }
         setUser(u);
+        setStoredAuthUser(u);
         if (u?.storeId) setStoredStoreId(u.storeId);
         if (u?.storeId && typeof u.store?.offlineModeEnabled === "boolean") {
           setOfflineModeEnabledForStore(u.storeId, u.store.offlineModeEnabled);
         }
-        if (u) {
-          const result = await pullFromServer();
-          setSynced(result.synced);
-        }
+        const result = await pullFromServer();
+        setSynced(result.synced);
+      })
+      .catch((error) => {
+        console.error("Falha ao validar sessao salva:", error);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -83,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (newUser.storeId && typeof newUser.store?.offlineModeEnabled === "boolean") {
         setOfflineModeEnabledForStore(newUser.storeId, newUser.store.offlineModeEnabled);
       }
+      setStoredAuthUser(newUser);
       setToken(newToken);
       setUser(newUser);
       const result = await pullFromServer();

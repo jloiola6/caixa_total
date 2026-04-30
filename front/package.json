@@ -103,10 +103,12 @@
     "files": [
       "electron/**/*",
       "out/**/*",
+      "build/**/*",
       "package.json",
       "desktop-update-config.json",
       "desktop-runtime-config.json"
     ],
+    "icon": "build/icon",
     "linux": {
       "target": [
         "AppImage"
@@ -114,6 +116,7 @@
       "category": "Utility"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ],
@@ -125,6 +128,9 @@
       "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "installerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
       "shortcutName": "Caixa Total"
     },
     "artifactName": "caixa-total-${version}-${os}-${arch}.${ext}"

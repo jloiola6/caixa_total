@@ -1,6 +1,7 @@
-import { getApiUrl } from "./api";
+import { getApiUrl, isTransientFetchError } from "./api";
 
 const TOKEN_KEY = "caixatotal_token";
+const AUTH_USER_KEY = "caixatotal_auth_user";
 
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -26,6 +27,7 @@ export function getStoredStoreId(): string | null {
 export function clearStoredToken(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(STORE_ID_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
 }
 
 export type AuthUser = {
@@ -51,6 +53,26 @@ export type AuthUser = {
     stockAlertAvailableThreshold?: number;
   } | null;
 };
+
+export function getStoredAuthUser(): AuthUser | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(AUTH_USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    localStorage.removeItem(AUTH_USER_KEY);
+    return null;
+  }
+}
+
+export function setStoredAuthUser(user: AuthUser | null): void {
+  if (!user) {
+    localStorage.removeItem(AUTH_USER_KEY);
+    return;
+  }
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+}
 
 async function parseJsonWithFallback(
   res: Response,
@@ -118,11 +140,22 @@ export async function resetPassword(token: string, newPassword: string): Promise
 export async function getMe(): Promise<AuthUser | null> {
   const token = getStoredToken();
   if (!token) return null;
-  const res = await fetch(getApiUrl("/auth/me"), {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
+
+  let res: Response;
+  try {
+    res = await fetch(getApiUrl("/auth/me"), {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (error) {
+    if (isTransientFetchError(error)) throw error;
+    throw error;
+  }
+
+  if (res.status === 401 || res.status === 403) return null;
+  if (!res.ok) {
+    throw new Error(`Falha ao validar sessao: ${res.status}`);
+  }
   return res.json();
 }
 

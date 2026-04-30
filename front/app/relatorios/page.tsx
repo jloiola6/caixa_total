@@ -830,7 +830,7 @@ function RelatoriosContent() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-6">
+    <div className="flex min-w-0 max-w-full flex-col gap-6 overflow-x-hidden p-4 md:p-6">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1156,7 +1156,7 @@ function RelatoriosContent() {
               Nenhuma venda no periodo selecionado
             </p>
           ) : (
-            <div className="rounded-lg border border-border">
+            <div className="min-w-0 overflow-hidden rounded-lg border border-border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1267,12 +1267,12 @@ function RelatoriosContent() {
                       {expandedSale === sale.id && (
                         <TableRow key={`${sale.id}-detail`}>
                           <TableCell colSpan={6} className="bg-muted/30 p-0">
-                            <div className="px-8 py-3">
-                              <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="min-w-0 px-3 py-3 sm:px-8">
+                              <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                                 <p className="text-xs text-muted-foreground uppercase tracking-wide">
                                   Itens da venda
                                 </p>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                   <Button
                                     type="button"
                                     size="sm"
@@ -1319,10 +1319,10 @@ function RelatoriosContent() {
                                   return (
                                     <div
                                       key={item.id}
-                                      className="flex items-center justify-between text-sm"
+                                      className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between"
                                     >
-                                      <span className="text-foreground flex items-center gap-2">
-                                        <span>
+                                      <span className="flex min-w-0 items-center gap-2 text-foreground">
+                                        <span className="min-w-0 break-words">
                                           {item.qty}x {item.productName}
                                           {item.sku && (
                                             <span className="text-muted-foreground ml-1">
@@ -1336,7 +1336,7 @@ function RelatoriosContent() {
                                           </Badge>
                                         )}
                                       </span>
-                                      <span className="text-muted-foreground">
+                                      <span className="shrink-0 text-muted-foreground">
                                         {formatCurrency(item.lineTotalCents)}
                                       </span>
                                     </div>
